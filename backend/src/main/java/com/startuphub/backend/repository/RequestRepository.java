@@ -35,6 +35,7 @@ public interface RequestRepository extends JpaRepository<Request, Long> {
     
     List<Request> findByRecipientUserIdAndStatus(Long userId, RequestStatus status);
     
+    
     // ===== FIND BY STARTUP AND USER =====
     Optional<Request> findByStartupAndRecipient(Startup startup, User recipient);
     

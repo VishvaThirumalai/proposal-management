@@ -79,6 +79,51 @@ public class InvestorController {
             return ResponseEntity.badRequest().body("Failed to load proposals: " + e.getMessage());
         }
     }
+       // ================================================================
+    // 12. GET INVESTED PROPOSALS
+    // ================================================================
+    @GetMapping("/invested")
+    public ResponseEntity<?> getInvestedProposals() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String email = auth.getName();
+            User investor = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Investor not found"));
+
+            log.info("📊 Getting invested proposals for investor: {}", investor.getName());
+
+            // Get all requests where this investor is the recipient
+            List<Request> requests = requestRepository.findByRecipientUserId(investor.getUserId());
+
+            List<Map<String, Object>> investedProposals = new ArrayList<>();
+
+            for (Request req : requests) {
+                // Only include proposals where access is granted (permissionGranted = true)
+                if (req.getPermissionGranted() != null && req.getPermissionGranted()) {
+                    Startup p = req.getStartup();
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("startupId", p.getStartupId());
+                    map.put("title", p.getTitle());
+                    map.put("domain", p.getDomain());
+                    map.put("stage", p.getStage() != null ? p.getStage().name() : "N/A");
+                    map.put("fundingAmount", p.getFundingAmount());
+                    map.put("aiSummary", p.getAiSummary());
+                    map.put("ipfsCid", p.getIpfsCid());
+                    map.put("status", p.getStatus());
+                    map.put("grantedAt", req.getUpdatedAt());
+                    map.put("amount", p.getFundingAmount());
+                    investedProposals.add(map);
+                }
+            }
+
+            log.info("✅ Found {} invested proposals", investedProposals.size());
+            return ResponseEntity.ok(investedProposals);
+
+        } catch (Exception e) {
+            log.error("❌ Failed to get invested proposals: {}", e.getMessage());
+            return ResponseEntity.badRequest().body("Failed to get invested proposals: " + e.getMessage());
+        }
+    }
 
     // ================================================================
     // 2. SEARCH PROPOSALS

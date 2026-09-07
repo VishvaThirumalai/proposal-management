@@ -21,6 +21,7 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
         setError('');
         try {
             const result = await recommendationService.getMentorRecommendations(startupId);
+            console.log('📊 Mentor Recommendations:', result);
             setMentors(result.recommendations || []);
         } catch (err) {
             setError('Failed to load mentor recommendations: ' + err.message);
@@ -47,9 +48,10 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
         setError('');
         
         try {
-            // Import requestService dynamically to avoid circular dependency
             const { requestService } = await import('../../services/requestService');
-            const recipientId = selectedMentor.id || selectedMentor.mentorId || selectedMentor.userId;
+            // ✅ Get the mentor ID from the nested mentor object
+            const mentorData = selectedMentor.mentor || selectedMentor;
+            const recipientId = mentorData.id || mentorData.mentorId || mentorData.userId;
 
             if (!recipientId) throw new Error('Recipient user id not found');
 
@@ -64,7 +66,6 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
             setSelectedMentor(null);
             setRequestMessage('');
             
-            // Show success message (you can use a toast notification)
             alert('✅ Request sent successfully!');
             
         } catch (err) {
@@ -86,6 +87,21 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
         if (percentage >= 80) return '🔥';
         if (percentage >= 60) return '⭐';
         return '📌';
+    };
+
+    // ✅ Helper to get the mentor data from nested structure
+    const getMentorData = (item) => item.mentor || item;
+
+    // ✅ Helper to get name from nested structure
+    const getMentorName = (item) => {
+        const mentor = getMentorData(item);
+        return mentor.user?.name || mentor.name || 'Unknown';
+    };
+
+    // ✅ Helper to get initial
+    const getInitial = (item) => {
+        const name = getMentorName(item);
+        return name.charAt(0) || 'M';
     };
 
     return (
@@ -124,7 +140,6 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
                 </div>
             )}
 
-            {/* Loading State */}
             {loading ? (
                 <div className="text-center py-12">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -138,71 +153,71 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
                 </div>
             ) : (
                 <div className="grid gap-4">
-                    {mentors.map((mentor, index) => (
-                        <div key={mentor.id || index} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-                            <div className="flex flex-wrap justify-between items-start gap-4">
-                                {/* Left - Mentor Info */}
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold">
-                                            {( (mentor.name || mentor.mentor?.user?.name || mentor.mentor?.user?.fullName || 'M').charAt(0) )}
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-semibold text-gray-800">
-                                                    {mentor.name || mentor.mentor?.user?.name || mentor.mentor?.user?.fullName || 'Unknown'}
-                                                </span>
-                                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getMatchBadge(mentor.similarity || 0)}`}>
-                                                    {getMatchIcon(mentor.similarity || 0)} {Math.round((mentor.similarity || 0) * 100)}% Match
-                                                </span>
+                    {mentors.map((item, index) => {
+                        const mentor = getMentorData(item);
+                        const name = getMentorName(item);
+                        return (
+                            <div key={mentor.id || index} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                                <div className="flex flex-wrap justify-between items-start gap-4">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold">
+                                                {getInitial(item)}
                                             </div>
-                                            <p className="text-sm text-gray-600">
-                                                {mentor.designation || 'N/A'} 
-                                                {mentor.company ? ` at ${mentor.company}` : ''}
-                                            </p>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-semibold text-gray-800">
+                                                        {name}
+                                                    </span>
+                                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getMatchBadge(item.similarity || 0)}`}>
+                                                        {getMatchIcon(item.similarity || 0)} {Math.round((item.similarity || 0) * 100)}% Match
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-gray-600">
+                                                    {mentor.designation || 'N/A'} 
+                                                    {mentor.company ? ` at ${mentor.company}` : ''}
+                                                </p>
+                                            </div>
                                         </div>
+
+                                        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-500">
+                                            <span className="flex items-center gap-1">
+                                                <FiAward className="text-gray-400" />
+                                                {mentor.yearsExperience || 0} years
+                                            </span>
+                                            <span className="text-gray-300">|</span>
+                                            <span className="flex items-center gap-1">
+                                                <FiUsers className="text-gray-400" />
+                                                {mentor.expertise || 'N/A'}
+                                            </span>
+                                        </div>
+
+                                        {mentor.linkedin && (
+                                            <a 
+                                                href={mentor.linkedin} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 mt-1"
+                                            >
+                                                <FiLinkedin /> View LinkedIn Profile
+                                            </a>
+                                        )}
                                     </div>
 
-                                    {/* Experience & Expertise */}
-                                    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-500">
-                                        <span className="flex items-center gap-1">
-                                            <FiAward className="text-gray-400" />
-                                            {mentor.yearsExperience || 0} years
-                                        </span>
-                                        <span className="text-gray-300">|</span>
-                                        <span className="flex items-center gap-1">
-                                            <FiUsers className="text-gray-400" />
-                                            {mentor.expertise || 'N/A'}
-                                        </span>
-                                    </div>
-
-                                    {/* LinkedIn */}
-                                    {(mentor.linkedin || mentor.mentor?.linkedin) && (
-                                        <a 
-                                            href={mentor.linkedin || mentor.mentor?.linkedin} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 mt-1"
-                                        >
-                                            <FiLinkedin /> View LinkedIn Profile
-                                        </a>
-                                    )}
+                                    <button
+                                        onClick={() => {
+                                            setSelectedMentor(item);
+                                            setShowRequestModal(true);
+                                            setRequestMessage('');
+                                        }}
+                                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition"
+                                    >
+                                        <FiSend /> Connect
+                                    </button>
                                 </div>
-
-                                {/* Right - Action Button */}
-                                <button
-                                    onClick={() => {
-                                        setSelectedMentor(mentor);
-                                        setShowRequestModal(true);
-                                        setRequestMessage('');
-                                    }}
-                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition"
-                                >
-                                    <FiSend /> Connect
-                                </button>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 
@@ -229,8 +244,8 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
 
                         <div className="mb-4">
                             <p className="text-sm text-gray-600">Sending request to:</p>
-                            <p className="font-semibold text-gray-800">{selectedMentor.name || selectedMentor.mentor?.user?.name || selectedMentor.mentor?.user?.fullName || 'Unknown'}</p>
-                            <p className="text-sm text-gray-500">{selectedMentor.designation || 'N/A'}</p>
+                            <p className="font-semibold text-gray-800">{getMentorName(selectedMentor)}</p>
+                            <p className="text-sm text-gray-500">{selectedMentor.mentor?.designation || 'N/A'}</p>
                         </div>
 
                         <div className="mb-4">

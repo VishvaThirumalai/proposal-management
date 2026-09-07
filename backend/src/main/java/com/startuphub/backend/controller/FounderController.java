@@ -1,5 +1,6 @@
 package com.startuphub.backend.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.startuphub.backend.config.JwtUtil;
 import com.startuphub.backend.model.*;
 import com.startuphub.backend.model.dto.*;
@@ -33,24 +34,30 @@ public class FounderController {
     private final RecommendationService recommendationService;
     private final IPFSService ipfsService;
     private final FabricService fabricService;
+    private final PDFExtractorService pdfExtractorService;
+    private final AIService aiService;
 
     // ===== REPOSITORIES =====
     private final StartupRepository startupRepository;
     private final UserRepository userRepository;
     private final RequestRepository requestRepository;
     private final ReEncryptionKeyRepository reEncryptionKeyRepository;
-    private final MentorProfileRepository mentorProfileRepository;     // ✅ ADDED
-    private final InvestorProfileRepository investorProfileRepository; // ✅ ADDED
+    private final MentorProfileRepository mentorProfileRepository;
+    private final InvestorProfileRepository investorProfileRepository;
+
+    // ===== OBJECT MAPPER =====
+    private final ObjectMapper objectMapper;
 
     // ================================================================
-    // 1. UPLOAD PROPOSAL
+    // 1. PREVIEW AI ANALYSIS
     // ================================================================
-    @PostMapping("/upload-proposal")
-    public ResponseEntity<?> uploadProposal(
+    @PostMapping(value = "/preview-ai", consumes = "multipart/form-data")
+    public ResponseEntity<?> previewAI(
             HttpServletRequest request,
-            @RequestPart("file") MultipartFile file,
-            @RequestPart("details") ProposalUploadRequest proposalRequest) {
+            @RequestParam("file") MultipartFile file) {
         try {
+            log.info("📄 AI Preview called for file: {}", file.getOriginalFilename());
+            
             String authHeader = request.getHeader("Authorization");
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 return ResponseEntity.status(401).body("Missing or invalid Authorization header");
@@ -63,34 +70,94 @@ public class FounderController {
                 return ResponseEntity.badRequest().body("User ID not found in token");
             }
 
-            Startup startup = proposalService.uploadProposal(
-                    founderId,
-                    proposalRequest.getTitle(),
-                    proposalRequest.getDomain(),
-                    proposalRequest.getStage(),
-                    proposalRequest.getFundingAmount(),
-                    file
-            );
+            // 1. Extract text from PDF
+            String extractedText = pdfExtractorService.extractText(file);
+            log.info("✅ Extracted {} characters", extractedText.length());
 
+            // 2. AI Analysis
+            AIService.AIAnalysisResult aiResult = aiService.analyzeProposal(extractedText);
+            
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("message", "Proposal uploaded successfully!");
-            response.put("startupId", startup.getStartupId());
-            response.put("title", startup.getTitle());
-            response.put("status", startup.getStatus());
-            response.put("ipfsCid", startup.getIpfsCid());
-            response.put("blockchainTx", startup.getBlockchainTxHash());
+            response.put("summary", aiResult.getSummary());
+            response.put("problemStatement", aiResult.getProblemStatement());
+            response.put("solution", aiResult.getSolution());
+            response.put("domain", aiResult.getDomain());
+            response.put("technologyStack", aiResult.getTechnologyStack());
+            response.put("keywords", aiResult.getKeywords());
+            response.put("tags", aiResult.getTags());
+            response.put("mentorRequirements", aiResult.getMentorRequirements());
+            response.put("investorPitch", aiResult.getInvestorPitch());
+            response.put("businessModel", aiResult.getBusinessModel());
+            response.put("fundingPurpose", aiResult.getFundingPurpose());
 
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            log.error("❌ Upload failed: {}", e.getMessage());
-            return ResponseEntity.badRequest().body("Upload failed: " + e.getMessage());
+            log.error("❌ AI Preview failed: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest().body("AI Preview failed: " + e.getMessage());
         }
     }
 
     // ================================================================
-    // 2. GET ALL PROPOSALS
+    // 2. UPLOAD PROPOSAL (FIXED)
+    // ================================================================
+   // ================================================================
+// 2. UPLOAD PROPOSAL (FIXED - Using @RequestPart)
+// ================================================================
+@PostMapping(value = "/upload-proposal", consumes = "multipart/form-data")
+public ResponseEntity<?> uploadProposal(
+        HttpServletRequest request,
+        @RequestParam("file") MultipartFile file,
+        @RequestPart("details") String detailsJson) {  // ✅ @RequestPart, NOT @RequestParam
+    try {
+        log.info("📤 Upload proposal called for file: {}", file.getOriginalFilename());
+        log.info("📤 Details JSON: {}", detailsJson);
+        
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(401).body("Missing or invalid Authorization header");
+        }
+
+        String token = authHeader.substring(7);
+        Long founderId = jwtUtil.extractUserId(token);
+
+        if (founderId == null) {
+            return ResponseEntity.badRequest().body("User ID not found in token");
+        }
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        ProposalUploadRequest proposalRequest = objectMapper.readValue(detailsJson, ProposalUploadRequest.class);
+
+        Startup startup = proposalService.uploadProposal(
+                founderId,
+                proposalRequest.getTitle(),
+                proposalRequest.getDomain(),
+                proposalRequest.getStage(),
+                proposalRequest.getFundingAmount(),
+                file
+        );
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "Proposal uploaded successfully!");
+        response.put("startupId", startup.getStartupId());
+        response.put("title", startup.getTitle());
+        response.put("status", startup.getStatus());
+        response.put("ipfsCid", startup.getIpfsCid());
+        response.put("blockchainTx", startup.getBlockchainTxHash());
+
+        return ResponseEntity.ok(response);
+
+    } catch (Exception e) {
+        log.error("❌ Upload failed: {}", e.getMessage(), e);
+        e.printStackTrace();
+        return ResponseEntity.badRequest().body("Upload failed: " + e.getMessage());
+    }
+}
+
+    // ================================================================
+    // 3. GET ALL PROPOSALS
     // ================================================================
     @GetMapping("/proposals")
     public ResponseEntity<?> getProposals(HttpServletRequest request) {
@@ -143,7 +210,7 @@ public class FounderController {
     }
 
     // ================================================================
-    // 3. GET RECOMMENDATIONS
+    // 4. GET RECOMMENDATIONS
     // ================================================================
     @GetMapping("/recommendations/{startupId}")
     public ResponseEntity<?> getRecommendations(@PathVariable Long startupId) {
@@ -189,7 +256,7 @@ public class FounderController {
     }
 
     // ================================================================
-    // 4. SEND REQUEST TO MENTOR/INVESTOR (UPDATED WITH FIX)
+    // 5. SEND REQUEST TO MENTOR/INVESTOR
     // ================================================================
     @PostMapping("/send-request")
     public ResponseEntity<?> sendRequest(@RequestBody SendRequestDTO requestDTO) {
@@ -199,7 +266,6 @@ public class FounderController {
             User founder = userRepository.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("User not found"));
 
-            // ✅ Verify startup exists
             Startup startup = startupRepository.findById(requestDTO.getStartupId())
                     .orElseThrow(() -> new RuntimeException("Startup not found"));
             
@@ -207,29 +273,24 @@ public class FounderController {
                 return ResponseEntity.status(403).body("You don't own this startup");
             }
 
-            // ✅ Find recipient - try direct user lookup first
             User recipient = null;
             Long recipientId = requestDTO.getRecipientId();
             
             log.info("🔍 Looking for recipient with ID: {}", recipientId);
             
-            // Try by user_id first
             Optional<User> userOpt = userRepository.findById(recipientId);
             if (userOpt.isPresent()) {
                 recipient = userOpt.get();
                 log.info("✅ Found user directly with ID: {}", recipientId);
             } else {
-                // If not found, try to find if this is a mentor_id or investor_id
                 log.info("🔄 Trying to find if {} is a mentor_id or investor_id", recipientId);
                 
-                // Check mentor_profiles
                 Optional<MentorProfile> mentorOpt = mentorProfileRepository.findById(recipientId);
                 if (mentorOpt.isPresent()) {
                     recipient = mentorOpt.get().getUser();
                     log.info("✅ Found mentor with mentor_id: {} -> user_id: {}", 
                              recipientId, recipient.getUserId());
                 } else {
-                    // Check investor_profiles
                     Optional<InvestorProfile> investorOpt = investorProfileRepository.findById(recipientId);
                     if (investorOpt.isPresent()) {
                         recipient = investorOpt.get().getUser();
@@ -243,18 +304,15 @@ public class FounderController {
                 return ResponseEntity.badRequest().body("Recipient not found with ID: " + recipientId);
             }
 
-            // ✅ Log for debugging
             log.info("📤 Founder {} sending request to {} (User ID: {})", 
                      founder.getName(), recipient.getName(), recipient.getUserId());
 
-            // Check if request already exists
             Optional<Request> existing = requestRepository.findByStartupAndRecipient(startup, recipient);
             
             if (existing.isPresent() && existing.get().getStatus() != RequestStatus.REJECTED) {
                 return ResponseEntity.badRequest().body("A request already exists for this user");
             }
 
-            // Create request
             Request request = Request.builder()
                     .startup(startup)
                     .founder(founder)
@@ -283,7 +341,7 @@ public class FounderController {
     }
 
     // ================================================================
-    // 5. GET ALL REQUESTS
+    // 6. GET ALL REQUESTS
     // ================================================================
     @GetMapping("/requests")
     public ResponseEntity<?> getRequests() {
@@ -321,117 +379,112 @@ public class FounderController {
     }
 
     // ================================================================
-    // 6. GRANT ACCESS (Upload Private Key & Generate RK)
+    // 7. GRANT ACCESS (Upload Private Key & Generate RK)
     // ================================================================
-   @PostMapping("/grant-access")
-@Transactional
-public ResponseEntity<?> grantAccess(@RequestBody PrivateKeyUploadDTO requestDTO) {
-    try {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        String email = auth.getName();
-        User founder = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        Request request = requestRepository.findById(requestDTO.getRequestId())
-                .orElseThrow(() -> new RuntimeException("Request not found"));
-
-        if (!request.getFounder().getUserId().equals(founder.getUserId())) {
-            return ResponseEntity.status(403).body("You don't own this request");
-        }
-
-        if (request.getStatus() != RequestStatus.ACCEPTED) {
-            return ResponseEntity.badRequest().body("Request must be accepted first");
-        }
-
-        if (request.getPermissionGranted()) {
-            return ResponseEntity.badRequest().body("Access already granted");
-        }
-
-        Startup startup = request.getStartup();
-        User recipient = request.getRecipient();
-
-        String founderPrivateKey = requestDTO.getPrivateKey();
-        if (founderPrivateKey == null || founderPrivateKey.isEmpty()) {
-            return ResponseEntity.badRequest().body("Founder's private key is required");
-        }
-
-        String recipientPublicKey = recipient.getPublicKey();
-        if (recipientPublicKey == null || recipientPublicKey.isEmpty()) {
-            return ResponseEntity.badRequest().body("Recipient has no public key");
-        }
-
+    @PostMapping("/grant-access")
+    @Transactional
+    public ResponseEntity<?> grantAccess(@RequestBody PrivateKeyUploadDTO requestDTO) {
         try {
-            log.info("🔐 Granting PRE access for Founder {} -> Recipient {}", 
-                     founder.getUserId(), recipient.getUserId());
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String email = auth.getName();
+            User founder = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
 
-            // 1. Get the encrypted AES key from startup
-            String encryptedAesKey = startup.getEncryptedAesKey();
-            log.debug("🔑 Encrypted AES key length: {}", encryptedAesKey.length());
+            Request request = requestRepository.findById(requestDTO.getRequestId())
+                    .orElseThrow(() -> new RuntimeException("Request not found"));
 
-            // 2. Decrypt AES key using founder's private key
-            String aesKeyBase64 = ipfsService.decryptAESKeyWithPrivateKey(
-                encryptedAesKey, 
-                founderPrivateKey
-            );
-            log.debug("🔑 Decrypted AES key length: {}", aesKeyBase64.length());
+            if (!request.getFounder().getUserId().equals(founder.getUserId())) {
+                return ResponseEntity.status(403).body("You don't own this request");
+            }
 
-            // 3. Re-encrypt AES key with recipient's PUBLIC key
-            String reEncryptedAesKey = ipfsService.encryptAESKeyWithPublicKey(
-                aesKeyBase64,
-                recipientPublicKey
-            );
-            log.debug("🔑 Re-encrypted AES key length: {}", reEncryptedAesKey.length());
+            if (request.getStatus() != RequestStatus.ACCEPTED) {
+                return ResponseEntity.badRequest().body("Request must be accepted first");
+            }
 
-            // 4. Store the re-encrypted AES key as RK
-            ReEncryptionKey reKey = ReEncryptionKey.builder()
-                    .request(request)
-                    .startup(startup)
-                    .user(recipient)
-                    .encryptedRk(reEncryptedAesKey)  // ✅ Clean Base64 (no colon)
-                    .reEncryptedCid(startup.getIpfsCid())
-                    .status("ACTIVE")
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    .build();
+            if (request.getPermissionGranted()) {
+                return ResponseEntity.badRequest().body("Access already granted");
+            }
 
-            reEncryptionKeyRepository.save(reKey);
+            Startup startup = request.getStartup();
+            User recipient = request.getRecipient();
 
-            // Update request
-            request.setPermissionGranted(true);
-            request.setUpdatedAt(LocalDateTime.now());
-            requestRepository.save(request);
+            String founderPrivateKey = requestDTO.getPrivateKey();
+            if (founderPrivateKey == null || founderPrivateKey.isEmpty()) {
+                return ResponseEntity.badRequest().body("Founder's private key is required");
+            }
 
-            // Record on blockchain
-            String txHash = fabricService.grantAccess(
-                    String.valueOf(startup.getStartupId()),
-                    String.valueOf(recipient.getUserId()),
-                    request.getRecipientRole(),
-                    String.valueOf(founder.getUserId())
-            );
-            request.setBlockchainTxHash(txHash);
-            requestRepository.save(request);
+            String recipientPublicKey = recipient.getPublicKey();
+            if (recipientPublicKey == null || recipientPublicKey.isEmpty()) {
+                return ResponseEntity.badRequest().body("Recipient has no public key");
+            }
 
-            log.info("✅ Access granted successfully with PRE!");
+            try {
+                log.info("🔐 Granting PRE access for Founder {} -> Recipient {}", 
+                         founder.getUserId(), recipient.getUserId());
 
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "Access granted successfully with Proxy Re-Encryption!",
-                    "requestId", request.getRequestId(),
-                    "blockchainTx", txHash
-            ));
+                String encryptedAesKey = startup.getEncryptedAesKey();
+                log.debug("🔑 Encrypted AES key length: {}", encryptedAesKey.length());
+
+                String aesKeyBase64 = ipfsService.decryptAESKeyWithPrivateKey(
+                    encryptedAesKey, 
+                    founderPrivateKey
+                );
+                log.debug("🔑 Decrypted AES key length: {}", aesKeyBase64.length());
+
+                String reEncryptedAesKey = ipfsService.encryptAESKeyWithPublicKey(
+                    aesKeyBase64,
+                    recipientPublicKey
+                );
+                log.debug("🔑 Re-encrypted AES key length: {}", reEncryptedAesKey.length());
+
+                ReEncryptionKey reKey = ReEncryptionKey.builder()
+                        .request(request)
+                        .startup(startup)
+                        .user(recipient)
+                        .encryptedRk(reEncryptedAesKey)
+                        .reEncryptedCid(startup.getIpfsCid())
+                        .status("ACTIVE")
+                        .createdAt(LocalDateTime.now())
+                        .updatedAt(LocalDateTime.now())
+                        .build();
+
+                reEncryptionKeyRepository.save(reKey);
+
+                request.setPermissionGranted(true);
+                request.setUpdatedAt(LocalDateTime.now());
+                requestRepository.save(request);
+
+                String txHash = fabricService.grantAccess(
+                        String.valueOf(startup.getStartupId()),
+                        String.valueOf(recipient.getUserId()),
+                        request.getRecipientRole(),
+                        String.valueOf(founder.getUserId())
+                );
+                request.setBlockchainTxHash(txHash);
+                requestRepository.save(request);
+
+                log.info("✅ Access granted successfully with PRE!");
+
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "message", "Access granted successfully with Proxy Re-Encryption!",
+                        "requestId", request.getRequestId(),
+                        "blockchainTx", txHash
+                ));
+
+            } catch (Exception e) {
+                log.error("❌ Failed to grant access: {}", e.getMessage());
+                return ResponseEntity.badRequest().body("Failed to grant access: " + e.getMessage());
+            }
 
         } catch (Exception e) {
-            log.error("❌ Failed to grant access: {}", e.getMessage());
+            log.error("❌ Failed to grant access: {}", e.getMessage(), e);
             return ResponseEntity.badRequest().body("Failed to grant access: " + e.getMessage());
         }
-
-    } catch (Exception e) {
-        log.error("❌ Failed to grant access: {}", e.getMessage(), e);
-        return ResponseEntity.badRequest().body("Failed to grant access: " + e.getMessage());
     }
-}
-// ================================================================
-    // 7. REVOKE ACCESS
+
+    // ================================================================
+    // 8. REVOKE ACCESS
     // ================================================================
     @PostMapping("/revoke-access")
     @Transactional
@@ -474,6 +527,51 @@ public ResponseEntity<?> grantAccess(@RequestBody PrivateKeyUploadDTO requestDTO
         } catch (Exception e) {
             log.error("❌ Failed to revoke access: {}", e.getMessage());
             return ResponseEntity.badRequest().body("Failed to revoke access: " + e.getMessage());
+        }
+    }
+
+    // ================================================================
+    // 9. GET ACCESS LIST FOR A PROPOSAL
+    // ================================================================
+    @GetMapping("/proposal/{startupId}/access-list")
+    public ResponseEntity<?> getAccessList(@PathVariable Long startupId) {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String email = auth.getName();
+            User founder = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            Startup startup = startupRepository.findById(startupId)
+                    .orElseThrow(() -> new RuntimeException("Startup not found"));
+
+            if (!startup.getFounder().getUserId().equals(founder.getUserId())) {
+                return ResponseEntity.status(403).body("You don't own this startup");
+            }
+
+            List<Request> requests = requestRepository.findByStartup(startup);
+
+            List<Map<String, Object>> accessList = new ArrayList<>();
+            for (Request req : requests) {
+                if (req.getPermissionGranted()) {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("requestId", req.getRequestId());
+                    map.put("recipientId", req.getRecipient().getUserId());
+                    map.put("recipientName", req.getRecipient().getName());
+                    map.put("recipientRole", req.getRecipientRole());
+                    map.put("grantedAt", req.getUpdatedAt());
+                    accessList.add(map);
+                }
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "count", accessList.size(),
+                    "accessList", accessList
+            ));
+
+        } catch (Exception e) {
+            log.error("❌ Failed to get access list: {}", e.getMessage());
+            return ResponseEntity.badRequest().body("Failed to get access list: " + e.getMessage());
         }
     }
 }

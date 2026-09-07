@@ -18,7 +18,10 @@ export const founderService = {
     uploadProposal: async (file, details) => {
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('details', JSON.stringify(details));
+        // ✅ Send details as JSON string with proper Blob
+        formData.append('details', new Blob([JSON.stringify(details)], { 
+            type: 'application/json' 
+        }));
 
         const response = await api.post('/founder/upload-proposal', formData, {
             headers: {

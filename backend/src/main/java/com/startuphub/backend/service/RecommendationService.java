@@ -293,57 +293,82 @@ public class RecommendationService {
     }
 
     // ================================================================
-    // INNER CLASSES - WITH FULL USER DATA
+    // INNER CLASSES - WITH DIRECT FIELD ACCESS (FIXED)
     // ================================================================
 
     public static class MentorRecommendation {
-        private final MentorProfile mentor;
-        private final double similarity;
-        private final String profileText;
+        private Long id;
+        private Long userId;
+        private String name;
+        private String company;
+        private String designation;
+        private Integer yearsExperience;
+        private String expertise;
+        private String linkedin;
+        private Double similarity;
+        private String profileText;
 
         public MentorRecommendation(MentorProfile mentor, double similarity, String profileText) {
-            this.mentor = mentor;
+            this.id = mentor.getMentorId();
+            this.userId = mentor.getUser() != null ? mentor.getUser().getUserId() : null;
+            this.name = mentor.getUser() != null ? mentor.getUser().getName() : "Unknown";
+            this.company = mentor.getCompany();
+            this.designation = mentor.getDesignation();
+            this.yearsExperience = mentor.getYearsExperience();
+            this.expertise = mentor.getExpertise();
+            this.linkedin = mentor.getLinkedin();
             this.similarity = similarity;
             this.profileText = profileText;
         }
 
-        public MentorProfile getMentor() { return mentor; }
-        public double getSimilarity() { return similarity; }
+        // ===== GETTERS =====
+        public Long getId() { return id; }
+        public Long getUserId() { return userId; }
+        public String getName() { return name; }
+        public String getCompany() { return company; }
+        public String getDesignation() { return designation; }
+        public Integer getYearsExperience() { return yearsExperience; }
+        public String getExpertise() { return expertise; }
+        public String getLinkedin() { return linkedin; }
+        public Double getSimilarity() { return similarity; }
         public String getProfileText() { return profileText; }
-        
-        // ✅ These methods directly access user data
-        public String getName() { 
-            return mentor.getUser() != null ? mentor.getUser().getName() : "Unknown";
-        }
-        public String getExpertise() { return mentor.getExpertise(); }
-        public String getCompany() { return mentor.getCompany(); }
-        public String getDesignation() { return mentor.getDesignation(); }
-        public Integer getYearsExperience() { return mentor.getYearsExperience(); }
-        public Long getId() { return mentor.getMentorId(); }
     }
 
     public static class InvestorRecommendation {
-        private final InvestorProfile investor;
-        private final double similarity;
-        private final String profileText;
+        private Long id;
+        private Long userId;
+        private String name;
+        private String organization;
+        private String website;
+        private String investmentDomains;
+        private String investmentStage;
+        private String linkedin;
+        private Double similarity;
+        private String profileText;
 
         public InvestorRecommendation(InvestorProfile investor, double similarity, String profileText) {
-            this.investor = investor;
+            this.id = investor.getInvestorId();
+            this.userId = investor.getUser() != null ? investor.getUser().getUserId() : null;
+            this.name = investor.getUser() != null ? investor.getUser().getName() : "Unknown";
+            this.organization = investor.getOrganization();
+            this.website = investor.getWebsite();
+            this.investmentDomains = investor.getInvestmentDomains();
+            this.investmentStage = investor.getInvestmentStage();
+            this.linkedin = investor.getLinkedin();
             this.similarity = similarity;
             this.profileText = profileText;
         }
 
-        public InvestorProfile getInvestor() { return investor; }
-        public double getSimilarity() { return similarity; }
+        // ===== GETTERS =====
+        public Long getId() { return id; }
+        public Long getUserId() { return userId; }
+        public String getName() { return name; }
+        public String getOrganization() { return organization; }
+        public String getWebsite() { return website; }
+        public String getInvestmentDomains() { return investmentDomains; }
+        public String getInvestmentStage() { return investmentStage; }
+        public String getLinkedin() { return linkedin; }
+        public Double getSimilarity() { return similarity; }
         public String getProfileText() { return profileText; }
-        
-        // ✅ These methods directly access user data
-        public String getName() { 
-            return investor.getUser() != null ? investor.getUser().getName() : "Unknown";
-        }
-        public String getOrganization() { return investor.getOrganization(); }
-        public String getInvestmentDomains() { return investor.getInvestmentDomains(); }
-        public String getInvestmentStage() { return investor.getInvestmentStage(); }
-        public Long getId() { return investor.getInvestorId(); }
     }
 }

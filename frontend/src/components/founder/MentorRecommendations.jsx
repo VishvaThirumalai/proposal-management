@@ -21,13 +21,20 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
         setError('');
         try {
             const result = await recommendationService.getMentorRecommendations(startupId);
-            console.log('📊 Mentor Recommendations:', result);
-            setMentors(result.recommendations || []);
+            console.log('📊 Mentor Recommendations Response:', result);
+            
+            // ✅ The data is directly in result.recommendations
+            const mentorsList = result.recommendations || [];
+            console.log('📊 Mentors list:', mentorsList);
+            console.log('📊 First mentor:', mentorsList[0]);
+            
+            setMentors(mentorsList);
         } catch (err) {
+            console.error('❌ Error loading mentor recommendations:', err);
             setError('Failed to load mentor recommendations: ' + err.message);
-            setMentors([]);
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     }, [startupId]);
 
@@ -38,7 +45,6 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
     const handleRefresh = async () => {
         setRefreshing(true);
         await loadRecommendations();
-        setRefreshing(false);
     };
 
     const handleSendRequest = async () => {
@@ -49,9 +55,7 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
         
         try {
             const { requestService } = await import('../../services/requestService');
-            // ✅ Get the mentor ID from the nested mentor object
-            const mentorData = selectedMentor.mentor || selectedMentor;
-            const recipientId = mentorData.id || mentorData.mentorId || mentorData.userId;
+            const recipientId = selectedMentor.userId || selectedMentor.id;
 
             if (!recipientId) throw new Error('Recipient user id not found');
 
@@ -65,7 +69,6 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
             setShowRequestModal(false);
             setSelectedMentor(null);
             setRequestMessage('');
-            
             alert('✅ Request sent successfully!');
             
         } catch (err) {
@@ -87,21 +90,6 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
         if (percentage >= 80) return '🔥';
         if (percentage >= 60) return '⭐';
         return '📌';
-    };
-
-    // ✅ Helper to get the mentor data from nested structure
-    const getMentorData = (item) => item.mentor || item;
-
-    // ✅ Helper to get name from nested structure
-    const getMentorName = (item) => {
-        const mentor = getMentorData(item);
-        return mentor.user?.name || mentor.name || 'Unknown';
-    };
-
-    // ✅ Helper to get initial
-    const getInitial = (item) => {
-        const name = getMentorName(item);
-        return name.charAt(0) || 'M';
     };
 
     return (
@@ -153,29 +141,36 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
                 </div>
             ) : (
                 <div className="grid gap-4">
-                    {mentors.map((item, index) => {
-                        const mentor = getMentorData(item);
-                        const name = getMentorName(item);
+                    {mentors.map((mentor, index) => {
+                        // ✅ Direct access - no nested structure
+                        const id = mentor.id || mentor.userId || index;
+                        const name = mentor.name || 'Unknown';
+                        const designation = mentor.designation || 'N/A';
+                        const company = mentor.company || 'N/A';
+                        const yearsExperience = mentor.yearsExperience || 0;
+                        const expertise = mentor.expertise || 'N/A';
+                        const linkedin = mentor.linkedin || '';
+                        const similarity = mentor.similarity || 0;
+
                         return (
-                            <div key={mentor.id || index} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                            <div key={id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
                                 <div className="flex flex-wrap justify-between items-start gap-4">
                                     <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2">
                                             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold">
-                                                {getInitial(item)}
+                                                {name.charAt(0) || 'M'}
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-semibold text-gray-800">
                                                         {name}
                                                     </span>
-                                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getMatchBadge(item.similarity || 0)}`}>
-                                                        {getMatchIcon(item.similarity || 0)} {Math.round((item.similarity || 0) * 100)}% Match
+                                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getMatchBadge(similarity)}`}>
+                                                        {getMatchIcon(similarity)} {Math.round(similarity * 100)}% Match
                                                     </span>
                                                 </div>
                                                 <p className="text-sm text-gray-600">
-                                                    {mentor.designation || 'N/A'} 
-                                                    {mentor.company ? ` at ${mentor.company}` : ''}
+                                                    {designation}{company && company !== 'N/A' ? ` at ${company}` : ''}
                                                 </p>
                                             </div>
                                         </div>
@@ -183,18 +178,18 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
                                         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-500">
                                             <span className="flex items-center gap-1">
                                                 <FiAward className="text-gray-400" />
-                                                {mentor.yearsExperience || 0} years
+                                                {yearsExperience > 0 ? `${yearsExperience} years` : 'N/A'}
                                             </span>
                                             <span className="text-gray-300">|</span>
                                             <span className="flex items-center gap-1">
                                                 <FiUsers className="text-gray-400" />
-                                                {mentor.expertise || 'N/A'}
+                                                {expertise}
                                             </span>
                                         </div>
 
-                                        {mentor.linkedin && (
+                                        {linkedin && (
                                             <a 
-                                                href={mentor.linkedin} 
+                                                href={linkedin} 
                                                 target="_blank" 
                                                 rel="noopener noreferrer"
                                                 className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 mt-1"
@@ -206,7 +201,7 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
 
                                     <button
                                         onClick={() => {
-                                            setSelectedMentor(item);
+                                            setSelectedMentor(mentor);
                                             setShowRequestModal(true);
                                             setRequestMessage('');
                                         }}
@@ -244,8 +239,8 @@ const MentorRecommendations = ({ startupId, startupTitle, onClose }) => {
 
                         <div className="mb-4">
                             <p className="text-sm text-gray-600">Sending request to:</p>
-                            <p className="font-semibold text-gray-800">{getMentorName(selectedMentor)}</p>
-                            <p className="text-sm text-gray-500">{selectedMentor.mentor?.designation || 'N/A'}</p>
+                            <p className="font-semibold text-gray-800">{selectedMentor.name || 'Unknown'}</p>
+                            <p className="text-sm text-gray-500">{selectedMentor.designation || 'N/A'}</p>
                         </div>
 
                         <div className="mb-4">

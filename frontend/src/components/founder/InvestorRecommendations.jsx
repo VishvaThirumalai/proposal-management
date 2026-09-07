@@ -17,18 +17,34 @@ const InvestorRecommendations = ({ startupId, startupTitle, onClose }) => {
     const [sendingRequest, setSendingRequest] = useState(false);
 
     const loadRecommendations = useCallback(async () => {
-        setLoading(true);
-        setError('');
-        try {
-            const result = await recommendationService.getInvestorRecommendations(startupId);
-            setInvestors(result.recommendations || []);
-        } catch (err) {
-            setError('Failed to load investor recommendations: ' + err.message);
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
+    setLoading(true);
+    setError('');
+    try {
+        const result = await recommendationService.getInvestorRecommendations(startupId);
+        console.log('📊 Full response:', result);
+        console.log('📊 Recommendations array:', result.recommendations);
+        console.log('📊 First investor:', result.recommendations?.[0]);
+        
+        // ✅ Check if the data has the expected structure
+        if (result.recommendations && result.recommendations.length > 0) {
+            const first = result.recommendations[0];
+            console.log('📊 First investor data:', {
+                id: first.id,
+                name: first.name,
+                organization: first.organization,
+                similarity: first.similarity
+            });
         }
-    }, [startupId]);
+        
+        setInvestors(result.recommendations || []);
+    } catch (err) {
+        console.error('❌ Error loading investor recommendations:', err);
+        setError('Failed to load investor recommendations: ' + err.message);
+    } finally {
+        setLoading(false);
+        setRefreshing(false);
+    }
+}, [startupId]);
 
     useEffect(() => {
         loadRecommendations();
@@ -47,7 +63,8 @@ const InvestorRecommendations = ({ startupId, startupTitle, onClose }) => {
         
         try {
             const { requestService } = await import('../../services/requestService');
-            const recipientId = selectedInvestor.id || selectedInvestor.investorId || selectedInvestor.userId;
+            // ✅ Get the investor ID directly from the object
+            const recipientId = selectedInvestor.id || selectedInvestor.userId;
 
             if (!recipientId) throw new Error('Recipient user id not found');
 
@@ -93,6 +110,41 @@ const InvestorRecommendations = ({ startupId, startupTitle, onClose }) => {
     const getDomainsList = (domains) => {
         if (!domains) return [];
         return domains.split(',').map(d => d.trim());
+    };
+
+    // ✅ Helper to get name - handle both old and new structure
+    const getInvestorName = (investor) => {
+        if (!investor) return 'Unknown';
+        // New structure: direct fields
+        if (investor.name) return investor.name;
+        // Old structure: nested in investor
+        if (investor.investor?.name) return investor.investor.name;
+        if (investor.investor?.user?.name) return investor.investor.user.name;
+        return 'Unknown';
+    };
+
+    // ✅ Helper to get organization
+    const getOrganization = (investor) => {
+        if (!investor) return 'N/A';
+        if (investor.organization) return investor.organization;
+        if (investor.investor?.organization) return investor.investor.organization;
+        return 'N/A';
+    };
+
+    // ✅ Helper to get investment domains
+    const getInvestmentDomains = (investor) => {
+        if (!investor) return '';
+        if (investor.investmentDomains) return investor.investmentDomains;
+        if (investor.investor?.investmentDomains) return investor.investor.investmentDomains;
+        return '';
+    };
+
+    // ✅ Helper to get investment stage
+    const getInvestmentStage = (investor) => {
+        if (!investor) return '';
+        if (investor.investmentStage) return investor.investmentStage;
+        if (investor.investor?.investmentStage) return investor.investor.investmentStage;
+        return '';
     };
 
     return (
@@ -145,89 +197,97 @@ const InvestorRecommendations = ({ startupId, startupTitle, onClose }) => {
                 </div>
             ) : (
                 <div className="grid gap-4">
-                    {investors.map((investor, index) => (
-                        <div key={investor.id || index} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-                            <div className="flex flex-wrap justify-between items-start gap-4">
-                                {/* Left - Investor Info */}
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-600 font-semibold">
-                                            {( (investor.name || investor.investor?.user?.name || investor.investor?.user?.fullName || 'I').charAt(0) )}
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-semibold text-gray-800">
-                                                    {investor.name || investor.investor?.user?.name || investor.investor?.user?.fullName || 'Unknown'}
-                                                </span>
-                                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getMatchBadge(investor.similarity || 0)}`}>
-                                                    {getMatchIcon(investor.similarity || 0)} {Math.round((investor.similarity || 0) * 100)}% Match
-                                                </span>
+                    {investors.map((investor, index) => {
+                        // ✅ Extract data using helper functions
+                        const name = getInvestorName(investor);
+                        const organization = getOrganization(investor);
+                        const investmentDomains = getInvestmentDomains(investor);
+                        const investmentStage = getInvestmentStage(investor);
+                        const similarity = investor.similarity || 0;
+                        const id = investor.id || investor.userId || index;
+
+                        return (
+                            <div key={id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                                <div className="flex flex-wrap justify-between items-start gap-4">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-600 font-semibold">
+                                                {name.charAt(0) || 'I'}
                                             </div>
-                                            <p className="text-sm text-gray-600">
-                                                {investor.organization || 'N/A'}
-                                            </p>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-semibold text-gray-800">
+                                                        {name}
+                                                    </span>
+                                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getMatchBadge(similarity)}`}>
+                                                        {getMatchIcon(similarity)} {Math.round(similarity * 100)}% Match
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-gray-600">
+                                                    {organization}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Investment Domains */}
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                            {getDomainsList(investmentDomains).map((domain, idx) => (
+                                                <span key={idx} className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 px-2.5 py-1 rounded-full text-xs font-medium">
+                                                    <FiTrendingUp className="text-purple-400" size={12} />
+                                                    {domain}
+                                                </span>
+                                            ))}
+                                        </div>
+
+                                        {/* Investment Stages */}
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                            {getStageList(investmentStage).map((stage, idx) => (
+                                                <span key={idx} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full text-xs font-medium">
+                                                    <FiDollarSign className="text-blue-400" size={12} />
+                                                    {stage}
+                                                </span>
+                                            ))}
+                                        </div>
+
+                                        {/* Links */}
+                                        <div className="mt-2 flex flex-wrap gap-3">
+                                            {investor.website && (
+                                                <a 
+                                                    href={investor.website} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+                                                >
+                                                    <FiGlobe /> Website
+                                                </a>
+                                            )}
+                                            {investor.linkedin && (
+                                                <a 
+                                                    href={investor.linkedin} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+                                                >
+                                                    <FiLinkedin /> LinkedIn
+                                                </a>
+                                            )}
                                         </div>
                                     </div>
 
-                                    {/* Investment Domains */}
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                        {getDomainsList(investor.investmentDomains || '').map((domain, idx) => (
-                                            <span key={idx} className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 px-2.5 py-1 rounded-full text-xs font-medium">
-                                                <FiTrendingUp className="text-purple-400" size={12} />
-                                                {domain}
-                                            </span>
-                                        ))}
-                                    </div>
-
-                                    {/* Investment Stages */}
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                        {getStageList(investor.investmentStage || investor.investor?.investmentStage).map((stage, idx) => (
-                                            <span key={idx} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full text-xs font-medium">
-                                                <FiDollarSign className="text-blue-400" size={12} />
-                                                {stage}
-                                            </span>
-                                        ))}
-                                    </div>
-
-                                    {/* Links */}
-                                    <div className="mt-2 flex flex-wrap gap-3">
-                                        {investor.website && (
-                                            <a 
-                                                href={investor.website} 
-                                                target="_blank" 
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
-                                            >
-                                                <FiGlobe /> Website
-                                            </a>
-                                        )}
-                                        {investor.linkedin && (
-                                            <a 
-                                                href={investor.linkedin} 
-                                                target="_blank" 
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
-                                            >
-                                                <FiLinkedin /> LinkedIn
-                                            </a>
-                                        )}
-                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setSelectedInvestor(investor);
+                                            setShowRequestModal(true);
+                                            setRequestMessage('');
+                                        }}
+                                        className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition"
+                                    >
+                                        <FiSend /> Connect
+                                    </button>
                                 </div>
-
-                                {/* Right - Action Button */}
-                                <button
-                                    onClick={() => {
-                                        setSelectedInvestor(investor);
-                                        setShowRequestModal(true);
-                                        setRequestMessage('');
-                                    }}
-                                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition"
-                                >
-                                    <FiSend /> Connect
-                                </button>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 
@@ -254,8 +314,8 @@ const InvestorRecommendations = ({ startupId, startupTitle, onClose }) => {
 
                         <div className="mb-4">
                             <p className="text-sm text-gray-600">Sending request to:</p>
-                            <p className="font-semibold text-gray-800">{selectedInvestor.name || selectedInvestor.investor?.user?.name || selectedInvestor.investor?.user?.fullName || 'Unknown'}</p>
-                            <p className="text-sm text-gray-500">{selectedInvestor.organization || 'N/A'}</p>
+                            <p className="font-semibold text-gray-800">{getInvestorName(selectedInvestor)}</p>
+                            <p className="text-sm text-gray-500">{getOrganization(selectedInvestor)}</p>
                         </div>
 
                         <div className="mb-4">

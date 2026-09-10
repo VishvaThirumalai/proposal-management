@@ -11,6 +11,7 @@ import ManageUsers from '../components/admin/ManageUsers';
 // Founder Components
 import FounderDashboard from '../components/founder/FounderDashboard';
 import UploadProposal from '../components/founder/UploadProposal';
+import UpdateProposal from '../components/founder/UpdateProposal';  // ✅ ADD THIS IMPORT
 
 // Mentor Components
 import MentorDashboard from '../components/mentor/MentorDashboard';
@@ -48,6 +49,7 @@ const DashboardRouter = () => {
                 {/* Founder Routes */}
                 <Route path="founder" element={<FounderDashboard />} />
                 <Route path="founder/upload" element={<UploadProposal />} />
+                <Route path="founder/update/:startupId" element={<UpdateProposal />} />  {/* ✅ ADD THIS - ONLY ONCE */}
                 
                 {/* Mentor Routes */}
                 <Route path="mentor" element={<MentorDashboard />} />

@@ -1,7 +1,7 @@
 import api from './api';
 
 export const founderService = {
-    // Preview AI analysis (Step 1)
+    // Preview AI analysis
     previewAI: async (file) => {
         const formData = new FormData();
         formData.append('file', file);
@@ -14,11 +14,10 @@ export const founderService = {
         return response.data;
     },
 
-    // Upload proposal with approved AI metadata (Step 2)
+    // Upload proposal
     uploadProposal: async (file, details) => {
         const formData = new FormData();
         formData.append('file', file);
-        // ✅ Send details as JSON string with proper Blob
         formData.append('details', new Blob([JSON.stringify(details)], { 
             type: 'application/json' 
         }));
@@ -37,13 +36,22 @@ export const founderService = {
         return response.data;
     },
 
-    // Get recommendations for a startup
+    // Get recommendations
     getRecommendations: async (startupId) => {
         const response = await api.get(`/founder/recommendations/${startupId}`);
         return response.data;
     },
 
-    // Send request to mentor/investor
+    // ✅ UPDATE PROPOSAL WITH DCH
+    updateProposal: async (startupId, updateData) => {
+        const response = await api.put('/founder/update-proposal', {
+            startupId,
+            ...updateData
+        });
+        return response.data;
+    },
+
+    // Send request
     sendRequest: async (startupId, recipientId, recipientRole, message) => {
         const response = await api.post('/founder/send-request', {
             startupId,
@@ -54,13 +62,13 @@ export const founderService = {
         return response.data;
     },
 
-    // Get all requests
+    // Get requests
     getRequests: async () => {
         const response = await api.get('/founder/requests');
         return response.data;
     },
 
-    // Grant access (upload private key)
+    // Grant access
     grantAccess: async (requestId, privateKey) => {
         const response = await api.post('/founder/grant-access', {
             requestId,

@@ -106,6 +106,9 @@ public class Startup {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "dch_random_param")
+     private String dchRandomParam;
+
     @OneToMany(mappedBy = "startup", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<ProposalVersion> versions;
 
@@ -127,4 +130,6 @@ public class Startup {
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
+    public String getDchRandomParam() { return dchRandomParam; }
+    public void setDchRandomParam(String dchRandomParam) { this.dchRandomParam = dchRandomParam; }  
 }

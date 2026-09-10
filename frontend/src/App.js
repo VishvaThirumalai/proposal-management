@@ -9,6 +9,8 @@ import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import DashboardRouter from './pages/DashboardRouter';
+import UpdateProposal from './components/founder/UpdateProposal';
+
 import './App.css';
 
 // ✅ Protected Route Component

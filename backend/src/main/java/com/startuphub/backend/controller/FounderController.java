@@ -36,6 +36,8 @@ public class FounderController {
     private final FabricService fabricService;
     private final PDFExtractorService pdfExtractorService;
     private final AIService aiService;
+    private final ProposalUpdateService proposalUpdateService;
+    private final DCHService dchService;
 
     // ===== REPOSITORIES =====
     private final StartupRepository startupRepository;
@@ -44,6 +46,7 @@ public class FounderController {
     private final ReEncryptionKeyRepository reEncryptionKeyRepository;
     private final MentorProfileRepository mentorProfileRepository;
     private final InvestorProfileRepository investorProfileRepository;
+    private final StartupVersionRepository startupVersionRepository;
 
     // ===== OBJECT MAPPER =====
     private final ObjectMapper objectMapper;
@@ -100,61 +103,58 @@ public class FounderController {
     }
 
     // ================================================================
-    // 2. UPLOAD PROPOSAL (FIXED)
+    // 2. UPLOAD PROPOSAL
     // ================================================================
-   // ================================================================
-// 2. UPLOAD PROPOSAL (FIXED - Using @RequestPart)
-// ================================================================
-@PostMapping(value = "/upload-proposal", consumes = "multipart/form-data")
-public ResponseEntity<?> uploadProposal(
-        HttpServletRequest request,
-        @RequestParam("file") MultipartFile file,
-        @RequestPart("details") String detailsJson) {  // ✅ @RequestPart, NOT @RequestParam
-    try {
-        log.info("📤 Upload proposal called for file: {}", file.getOriginalFilename());
-        log.info("📤 Details JSON: {}", detailsJson);
-        
-        String authHeader = request.getHeader("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return ResponseEntity.status(401).body("Missing or invalid Authorization header");
+    @PostMapping(value = "/upload-proposal", consumes = "multipart/form-data")
+    public ResponseEntity<?> uploadProposal(
+            HttpServletRequest request,
+            @RequestParam("file") MultipartFile file,
+            @RequestPart("details") String detailsJson) {
+        try {
+            log.info("📤 Upload proposal called for file: {}", file.getOriginalFilename());
+            log.info("📤 Details JSON: {}", detailsJson);
+            
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(401).body("Missing or invalid Authorization header");
+            }
+
+            String token = authHeader.substring(7);
+            Long founderId = jwtUtil.extractUserId(token);
+
+            if (founderId == null) {
+                return ResponseEntity.badRequest().body("User ID not found in token");
+            }
+
+            // Use the injected objectMapper
+            ProposalUploadRequest proposalRequest = objectMapper.readValue(detailsJson, ProposalUploadRequest.class);
+
+            Startup startup = proposalService.uploadProposal(
+                    founderId,
+                    proposalRequest.getTitle(),
+                    proposalRequest.getDomain(),
+                    proposalRequest.getStage(),
+                    proposalRequest.getFundingAmount(),
+                    file
+            );
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Proposal uploaded successfully!");
+            response.put("startupId", startup.getStartupId());
+            response.put("title", startup.getTitle());
+            response.put("status", startup.getStatus());
+            response.put("ipfsCid", startup.getIpfsCid());
+            response.put("blockchainTx", startup.getBlockchainTxHash());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("❌ Upload failed: {}", e.getMessage(), e);
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body("Upload failed: " + e.getMessage());
         }
-
-        String token = authHeader.substring(7);
-        Long founderId = jwtUtil.extractUserId(token);
-
-        if (founderId == null) {
-            return ResponseEntity.badRequest().body("User ID not found in token");
-        }
-
-        ObjectMapper objectMapper = new ObjectMapper();
-        ProposalUploadRequest proposalRequest = objectMapper.readValue(detailsJson, ProposalUploadRequest.class);
-
-        Startup startup = proposalService.uploadProposal(
-                founderId,
-                proposalRequest.getTitle(),
-                proposalRequest.getDomain(),
-                proposalRequest.getStage(),
-                proposalRequest.getFundingAmount(),
-                file
-        );
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", "Proposal uploaded successfully!");
-        response.put("startupId", startup.getStartupId());
-        response.put("title", startup.getTitle());
-        response.put("status", startup.getStatus());
-        response.put("ipfsCid", startup.getIpfsCid());
-        response.put("blockchainTx", startup.getBlockchainTxHash());
-
-        return ResponseEntity.ok(response);
-
-    } catch (Exception e) {
-        log.error("❌ Upload failed: {}", e.getMessage(), e);
-        e.printStackTrace();
-        return ResponseEntity.badRequest().body("Upload failed: " + e.getMessage());
     }
-}
 
     // ================================================================
     // 3. GET ALL PROPOSALS
@@ -187,6 +187,7 @@ public ResponseEntity<?> uploadProposal(
                 clean.put("ipfsCid", s.getIpfsCid());
                 clean.put("sha256Hash", s.getSha256Hash());
                 clean.put("tMeta", s.getTMeta());
+                clean.put("dchRandomParam", s.getDchRandomParam());
                 clean.put("status", s.getStatus());
                 clean.put("aiSummary", s.getAiSummary());
                 clean.put("aiKeywords", s.getAiKeywords());
@@ -572,6 +573,63 @@ public ResponseEntity<?> uploadProposal(
         } catch (Exception e) {
             log.error("❌ Failed to get access list: {}", e.getMessage());
             return ResponseEntity.badRequest().body("Failed to get access list: " + e.getMessage());
+        }
+    }
+
+    // ================================================================
+    // 10. UPDATE PROPOSAL WITH DCH
+    // ================================================================
+    @PutMapping("/update-proposal")
+    public ResponseEntity<?> updateProposal(
+            HttpServletRequest request,
+            @RequestBody UpdateProposalRequest updateRequest) {
+        try {
+            log.info("📝 Update proposal called for startup: {}", updateRequest.getStartupId());
+            
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return ResponseEntity.status(401).body("Missing or invalid Authorization header");
+            }
+
+            String token = authHeader.substring(7);
+            Long founderId = jwtUtil.extractUserId(token);
+
+            if (founderId == null) {
+                return ResponseEntity.badRequest().body("User ID not found in token");
+            }
+
+            Startup updatedStartup = proposalUpdateService.updateProposal(
+                    founderId,
+                    updateRequest.getStartupId(),
+                    updateRequest.getTitle(),
+                    updateRequest.getDomain(),
+                    updateRequest.getStage(),
+                    updateRequest.getFundingAmount(),
+                    updateRequest.getSummary(),
+                    updateRequest.getKeywords(),
+                    updateRequest.getTechnologyStack(),
+                    updateRequest.getMentorRequirements(),
+                    updateRequest.getInvestorPitch(),
+                    updateRequest.getProblemStatement(),
+                    updateRequest.getSolution(),
+                    updateRequest.getBusinessModel()
+            );
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Proposal updated successfully with DCH!");
+            response.put("startupId", updatedStartup.getStartupId());
+            response.put("title", updatedStartup.getTitle());
+            response.put("version", updatedStartup.getVersion());
+            response.put("status", updatedStartup.getStatus());
+            response.put("tMeta", updatedStartup.getTMeta());
+            response.put("dchRandomParam", updatedStartup.getDchRandomParam());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("❌ Update proposal failed: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest().body("Update failed: " + e.getMessage());
         }
     }
 }

@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { founderService } from '../../services/founderService';
 import { 
     FiPlus, FiFile, FiEye, FiClock, FiCheckCircle, 
     FiRefreshCw, FiUsers, FiBriefcase, 
     FiMail, FiSend,
-    FiCheck, FiX, FiLock, FiUnlock
+    FiCheck, FiX, FiLock, FiUnlock, FiEdit
 } from 'react-icons/fi';
 
 const FounderDashboard = () => {
+    const navigate = useNavigate();
     const [proposals, setProposals] = useState([]);
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -236,12 +237,20 @@ const FounderDashboard = () => {
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
                                 {proposal.status === 'INDEXED' && (
-                                    <button
-                                        onClick={() => handleViewRecommendations(proposal)}
-                                        className="flex items-center gap-1 text-purple-600 hover:text-purple-800 text-sm font-medium border border-purple-200 hover:border-purple-400 px-3 py-1.5 rounded-lg transition"
-                                    >
-                                        <FiUsers /> Recommend
-                                    </button>
+                                    <>
+                                        <button
+                                            onClick={() => handleViewRecommendations(proposal)}
+                                            className="flex items-center gap-1 text-purple-600 hover:text-purple-800 text-sm font-medium border border-purple-200 hover:border-purple-400 px-3 py-1.5 rounded-lg transition"
+                                        >
+                                            <FiUsers /> Recommend
+                                        </button>
+                                        <button
+                                            onClick={() => navigate(`/dashboard/founder/update/${proposal.startupId}`)}
+                                            className="flex items-center gap-1 text-orange-600 hover:text-orange-800 text-sm font-medium border border-orange-200 hover:border-orange-400 px-3 py-1.5 rounded-lg transition"
+                                        >
+                                            <FiEdit /> Update (DCH)
+                                        </button>
+                                    </>
                                 )}
                                 {proposal.ipfsCid && (
                                     <button
@@ -336,167 +345,172 @@ const FounderDashboard = () => {
     );
 
     const renderRecommendationsModal = () => {
-    if (!showRecommendations || !selectedProposal) return null;
+        if (!showRecommendations || !selectedProposal) return null;
 
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-y-auto">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
-                <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-800">Top Recommendations for</h2>
-                        <p className="text-gray-600">{selectedProposal.title}</p>
+        return (
+            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-y-auto">
+                <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+                    <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+                        <div>
+                            <h2 className="text-xl font-bold text-gray-800">Top Recommendations for</h2>
+                            <p className="text-gray-600">{selectedProposal.title}</p>
+                        </div>
+                        <button
+                            onClick={() => {
+                                setShowRecommendations(false);
+                                setSelectedProposal(null);
+                                setMentorRecommendations([]);
+                                setInvestorRecommendations([]);
+                            }}
+                            className="text-gray-500 hover:text-gray-700 text-2xl"
+                        >
+                            ×
+                        </button>
                     </div>
-                    <button
-                        onClick={() => {
-                            setShowRecommendations(false);
-                            setSelectedProposal(null);
-                            setMentorRecommendations([]);
-                            setInvestorRecommendations([]);
-                        }}
-                        className="text-gray-500 hover:text-gray-700 text-2xl"
-                    >
-                        ×
-                    </button>
-                </div>
 
-                <div className="p-6">
-                    {loadingRecommendations ? (
-                        <div className="text-center py-12">
-                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-                            <p className="text-gray-600 mt-2">Generating recommendations...</p>
-                        </div>
-                    ) : (
-                        <div className="grid md:grid-cols-2 gap-6">
-                            {/* Mentors */}
-                            <div>
-                                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                                    <FiUsers className="text-blue-600" />
-                                    Top Mentors ({mentorRecommendations.length})
-                                </h3>
-                                {mentorRecommendations.length === 0 ? (
-                                    <p className="text-gray-500 text-sm">No mentors available</p>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {mentorRecommendations.map((mentor, index) => (
-                                            <div key={mentor.id || index} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-                                                <div className="flex justify-between items-start">
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-medium text-gray-800">
-                                                                {mentor.name || 'Unknown'}
-                                                            </span>
-                                                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getMatchBadge(mentor.similarity || 0)}`}>
-                                                                {Math.round((mentor.similarity || 0) * 100)}% Match
-                                                            </span>
-                                                        </div>
-                                                        <p className="text-sm text-gray-600">
-                                                            {mentor.designation || 'N/A'} 
-                                                            {mentor.company && mentor.company !== 'N/A' ? ` at ${mentor.company}` : ''}
-                                                        </p>
-                                                        <p className="text-sm text-gray-500">
-                                                            {mentor.yearsExperience > 0 ? `${mentor.yearsExperience} years experience` : 'N/A'}
-                                                        </p>
-                                                        <p className="text-sm text-gray-500 mt-1">{mentor.expertise || 'N/A'}</p>
-                                                        {mentor.linkedin && (
-                                                            <a 
-                                                                href={mentor.linkedin} 
-                                                                target="_blank" 
-                                                                rel="noopener noreferrer"
-                                                                className="text-xs text-blue-600 hover:text-blue-800 mt-1 inline-block"
-                                                            >
-                                                                View LinkedIn Profile
-                                                            </a>
-                                                        )}
-                                                    </div>
-                                                    <button
-                                                        onClick={() => handleSendRequest(mentor.userId || mentor.id, 'MENTOR')}
-                                                        disabled={sendingRequest[mentor.id]}
-                                                        className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50 ml-2 flex-shrink-0"
-                                                    >
-                                                        {sendingRequest[mentor.id] ? (
-                                                            <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                                                        ) : (
-                                                            <>
-                                                                <FiSend /> Connect
-                                                            </>
-                                                        )}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                    <div className="p-6">
+                        {loadingRecommendations ? (
+                            <div className="text-center py-12">
+                                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                                <p className="text-gray-600 mt-2">Generating recommendations...</p>
                             </div>
+                        ) : (
+                            <div className="grid md:grid-cols-2 gap-6">
+                                {/* Mentors */}
+                                <div>
+                                    <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                        <FiUsers className="text-blue-600" />
+                                        Top Mentors ({mentorRecommendations.length})
+                                    </h3>
+                                    {mentorRecommendations.length === 0 ? (
+                                        <p className="text-gray-500 text-sm">No mentors available</p>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {mentorRecommendations.map((mentor, index) => (
+                                                <div key={mentor.id || index} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-medium text-gray-800">
+                                                                    {mentor.name || 'Unknown'}
+                                                                </span>
+                                                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getMatchBadge(mentor.similarity || 0)}`}>
+                                                                    {Math.round((mentor.similarity || 0) * 100)}% Match
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-sm text-gray-600">
+                                                                {mentor.designation || 'N/A'} 
+                                                                {mentor.company && mentor.company !== 'N/A' ? ` at ${mentor.company}` : ''}
+                                                            </p>
+                                                            <p className="text-sm text-gray-500">
+                                                                {mentor.yearsExperience > 0 ? `${mentor.yearsExperience} years experience` : 'N/A'}
+                                                            </p>
+                                                            <p className="text-sm text-gray-500 mt-1">{mentor.expertise || 'N/A'}</p>
+                                                            {mentor.linkedin && (
+                                                                <a 
+                                                                    href={mentor.linkedin} 
+                                                                    target="_blank" 
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-xs text-blue-600 hover:text-blue-800 mt-1 inline-block"
+                                                                >
+                                                                    View LinkedIn Profile
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleSendRequest(mentor.userId || mentor.id, 'MENTOR')}
+                                                            disabled={sendingRequest[mentor.id]}
+                                                            className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50 ml-2 flex-shrink-0"
+                                                        >
+                                                            {sendingRequest[mentor.id] ? (
+                                                                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                                                            ) : (
+                                                                <>
+                                                                    <FiSend /> Connect
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
 
-                            {/* Investors */}
-                            <div>
-                                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                                    <FiBriefcase className="text-green-600" />
-                                    Top Investors ({investorRecommendations.length})
-                                </h3>
-                                {investorRecommendations.length === 0 ? (
-                                    <p className="text-gray-500 text-sm">No investors available</p>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {investorRecommendations.map((investor, index) => (
-                                            <div key={investor.id || index} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-                                                <div className="flex justify-between items-start">
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-medium text-gray-800">
-                                                                {investor.name || 'Unknown'}
-                                                            </span>
-                                                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getMatchBadge(investor.similarity || 0)}`}>
-                                                                {Math.round((investor.similarity || 0) * 100)}% Match
-                                                            </span>
+                                {/* Investors */}
+                                <div>
+                                    <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                                        <FiBriefcase className="text-green-600" />
+                                        Top Investors ({investorRecommendations.length})
+                                    </h3>
+                                    {investorRecommendations.length === 0 ? (
+                                        <p className="text-gray-500 text-sm">No investors available</p>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {investorRecommendations.map((investor, index) => (
+                                                <div key={investor.id || index} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-medium text-gray-800">
+                                                                    {investor.name || 'Unknown'}
+                                                                </span>
+                                                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getMatchBadge(investor.similarity || 0)}`}>
+                                                                    {Math.round((investor.similarity || 0) * 100)}% Match
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-sm text-gray-600">{investor.organization || 'N/A'}</p>
+                                                            <p className="text-sm text-gray-500">Domains: {investor.investmentDomains || 'N/A'}</p>
+                                                            <p className="text-sm text-gray-500">Stage: {investor.investmentStage || 'N/A'}</p>
+                                                            {investor.linkedin && (
+                                                                <a 
+                                                                    href={investor.linkedin} 
+                                                                    target="_blank" 
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-xs text-blue-600 hover:text-blue-800 mt-1 inline-block"
+                                                                >
+                                                                    View LinkedIn Profile
+                                                                </a>
+                                                            )}
                                                         </div>
-                                                        <p className="text-sm text-gray-600">{investor.organization || 'N/A'}</p>
-                                                        <p className="text-sm text-gray-500">Domains: {investor.investmentDomains || 'N/A'}</p>
-                                                        <p className="text-sm text-gray-500">Stage: {investor.investmentStage || 'N/A'}</p>
-                                                        {investor.linkedin && (
-                                                            <a 
-                                                                href={investor.linkedin} 
-                                                                target="_blank" 
-                                                                rel="noopener noreferrer"
-                                                                className="text-xs text-blue-600 hover:text-blue-800 mt-1 inline-block"
-                                                            >
-                                                                View LinkedIn Profile
-                                                            </a>
-                                                        )}
+                                                        <button
+                                                            onClick={() => handleSendRequest(investor.userId || investor.id, 'INVESTOR')}
+                                                            disabled={sendingRequest[investor.id]}
+                                                            className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50 ml-2 flex-shrink-0"
+                                                        >
+                                                            {sendingRequest[investor.id] ? (
+                                                                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                                                            ) : (
+                                                                <>
+                                                                    <FiSend /> Connect
+                                                                </>
+                                                            )}
+                                                        </button>
                                                     </div>
-                                                    <button
-                                                        onClick={() => handleSendRequest(investor.userId || investor.id, 'INVESTOR')}
-                                                        disabled={sendingRequest[investor.id]}
-                                                        className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50 ml-2 flex-shrink-0"
-                                                    >
-                                                        {sendingRequest[investor.id] ? (
-                                                            <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                                                        ) : (
-                                                            <>
-                                                                <FiSend /> Connect
-                                                            </>
-                                                        )}
-                                                    </button>
                                                 </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </div>
-        </div>
-    );
-};
+        );
+    };
 
     return (
         <div className="max-w-7xl mx-auto p-6">
             {/* Header */}
             <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-800">Founder Dashboard</h1>
+                    <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
+                        Founder Dashboard
+                        <span className="text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                            {proposals.filter(p => p.status === 'INDEXED').length} Active
+                        </span>
+                    </h1>
                     <p className="text-gray-600">Manage your startup proposals</p>
                 </div>
                 <div className="flex gap-3">
@@ -532,23 +546,23 @@ const FounderDashboard = () => {
 
             {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition">
                     <p className="text-sm text-gray-500">Total Proposals</p>
                     <p className="text-2xl font-bold text-gray-800">{proposals.length}</p>
                 </div>
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition">
                     <p className="text-sm text-gray-500">Indexed</p>
                     <p className="text-2xl font-bold text-green-600">
                         {proposals.filter(p => p.status === 'INDEXED').length}
                     </p>
                 </div>
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                    <p className="text-sm text-gray-500">Requests</p>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition">
+                    <p className="text-sm text-gray-500">Pending Requests</p>
                     <p className="text-2xl font-bold text-yellow-600">
                         {requests.filter(r => r.status === 'PENDING').length}
                     </p>
                 </div>
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition">
                     <p className="text-sm text-gray-500">Access Granted</p>
                     <p className="text-2xl font-bold text-blue-600">
                         {requests.filter(r => r.permissionGranted).length}

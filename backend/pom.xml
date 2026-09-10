@@ -21,16 +21,13 @@
     <properties>
         <java.version>17</java.version>
         <jjwt.version>0.11.5</jjwt.version>
+        <grpc.version>1.78.0</grpc.version>
+        <protobuf.version>4.33.4</protobuf.version>
         <pdfbox.version>3.0.3</pdfbox.version>
         <tika.version>2.9.0</tika.version>
-        <fabric-gateway.version>1.10.1</fabric-gateway.version>
-        <grpc.version>1.62.2</grpc.version>
-        <protobuf.version>3.25.3</protobuf.version>
+        <httpclient.version>5.3.1</httpclient.version>
     </properties>
     
-    <!-- ========================================== -->
-    <!-- REPOSITORIES                               -->
-    <!-- ========================================== -->
     <repositories>
         <repository>
             <id>jitpack.io</id>
@@ -43,10 +40,19 @@
     </repositories>
     
     <!-- ========================================== -->
-    <!-- DEPENDENCY MANAGEMENT                       -->
+    <!-- DEPENDENCY MANAGEMENT (REQUIRED FOR FABRIC) -->
     <!-- ========================================== -->
     <dependencyManagement>
         <dependencies>
+            <!-- Protobuf BOM -->
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-bom</artifactId>
+                <version>${protobuf.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- gRPC BOM -->
             <dependency>
                 <groupId>io.grpc</groupId>
                 <artifactId>grpc-bom</artifactId>
@@ -57,9 +63,6 @@
         </dependencies>
     </dependencyManagement>
     
-    <!-- ========================================== -->
-    <!-- DEPENDENCIES                               -->
-    <!-- ========================================== -->
     <dependencies>
         
         <!-- ===== SPRING BOOT STARTERS ===== -->
@@ -88,6 +91,16 @@
             <artifactId>spring-boot-devtools</artifactId>
             <scope>runtime</scope>
             <optional>true</optional>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
         
         <!-- ===== DATABASE ===== -->
@@ -123,43 +136,68 @@
             <version>${pdfbox.version}</version>
         </dependency>
         
-        <!-- ===== HYPERLEDGER FABRIC (Mock Mode - Fabric Gateway commented out) ===== -->
-        <!-- To enable real Fabric, uncomment this section -->
-        <!--
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>${tika.version}</version>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-parsers-standard-package</artifactId>
+            <version>${tika.version}</version>
+        </dependency>
+        
+        <!-- ===== IPFS CLIENT ===== -->
+        <dependency>
+            <groupId>com.github.ipfs</groupId>
+            <artifactId>java-ipfs-http-client</artifactId>
+            <version>v1.3.3</version>
+        </dependency>
+        
+        <!-- ========================================== -->
+        <!-- HYPERLEDGER FABRIC GATEWAY (NEW API)        -->
+        <!-- ========================================== -->
         <dependency>
             <groupId>org.hyperledger.fabric</groupId>
             <artifactId>fabric-gateway</artifactId>
-            <version>${fabric-gateway.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>io.grpc</groupId>
-                    <artifactId>grpc-netty-shaded</artifactId>
-                </exclusion>
-            </exclusions>
+            <version>1.10.1</version>
         </dependency>
         
+        <!-- gRPC channel service provider -->
         <dependency>
             <groupId>io.grpc</groupId>
             <artifactId>grpc-netty-shaded</artifactId>
-            <version>${grpc.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-stub</artifactId>
-            <version>${grpc.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-protobuf</artifactId>
-            <version>${grpc.version}</version>
         </dependency>
         
+        <!-- gRPC API -->
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-api</artifactId>
+        </dependency>
+        
+        <!-- Protobuf Java -->
         <dependency>
             <groupId>com.google.protobuf</groupId>
             <artifactId>protobuf-java</artifactId>
-            <version>${protobuf.version}</version>
         </dependency>
-        -->
+        
+        <!-- ===== HTTP CLIENT ===== -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <version>${httpclient.version}</version>
+        </dependency>
+        
+        <!-- ===== JSON PROCESSING ===== -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
         
         <!-- ===== UTILITIES ===== -->
         <dependency>
@@ -169,9 +207,27 @@
         </dependency>
         
         <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+        </dependency>
+        
+        <dependency>
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
             <version>2.16.1</version>
+        </dependency>
+        
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <version>1.16.1</version>
+        </dependency>
+        
+        <!-- Bouncy Castle -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.78.1</version>
         </dependency>
         
         <!-- ===== TESTING ===== -->
@@ -180,29 +236,12 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        
-        <!-- ===== ACTUATOR ===== -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
         </dependency>
         
-        <!-- For Embedding Generation -->
-<dependency>
-    <groupId>ai.djl</groupId>
-    <artifactId>api</artifactId>
-    <version>0.28.0</version>
-</dependency>
-<dependency>
-    <groupId>ai.djl.pytorch</groupId>
-    <artifactId>pytorch-engine</artifactId>
-    <version>0.28.0</version>
-</dependency>
-<dependency>
-    <groupId>ai.djl.pytorch</groupId>
-    <artifactId>pytorch-model-zoo</artifactId>
-    <version>0.28.0</version>
-</dependency>
     </dependencies>
     
     <build>
@@ -217,6 +256,23 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
+                </configuration>
+            </plugin>
+            
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.34</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
         </plugins>

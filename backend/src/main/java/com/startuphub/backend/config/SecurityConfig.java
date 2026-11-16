@@ -46,7 +46,8 @@ public class SecurityConfig {
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/test/ipfs/**").permitAll()
-                        
+                        // Add this before .anyRequest().authenticated():
+.requestMatchers("/escrow/**").hasAnyRole("INVESTOR", "FOUNDER", "MENTOR", "ADMIN")
                         // ==========================================
                         // ADMIN ONLY
                         // ==========================================

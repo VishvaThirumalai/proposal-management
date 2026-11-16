@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { founderService } from '../../services/founderService';
+import FounderEscrowDashboard from '../escrow/FounderEscrowDashboard';
 import { 
     FiPlus, FiFile, FiEye, FiClock, FiCheckCircle, 
     FiRefreshCw, FiUsers, FiBriefcase, 
     FiMail, FiSend,
-    FiCheck, FiX, FiLock, FiUnlock, FiEdit
+    FiCheck, FiX, FiLock, FiUnlock, FiEdit,
+    FiDollarSign, FiTarget
 } from 'react-icons/fi';
 
 const FounderDashboard = () => {
@@ -88,7 +90,6 @@ const FounderDashboard = () => {
             setSuccess(`Request sent to ${recipientRole} successfully!`);
             setTimeout(() => setSuccess(''), 3000);
             await loadData();
-            // Remove from recommendations
             if (recipientRole === 'MENTOR') {
                 setMentorRecommendations(prev => 
                     prev.filter(m => m.mentor?.mentorId !== recipientId)
@@ -503,35 +504,41 @@ const FounderDashboard = () => {
     return (
         <div className="max-w-7xl mx-auto p-6">
             {/* Header */}
-            <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
-                        Founder Dashboard
-                        <span className="text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                            {proposals.filter(p => p.status === 'INDEXED').length} Active
-                        </span>
-                    </h1>
-                    <p className="text-gray-600">Manage your startup proposals</p>
-                </div>
-                <div className="flex gap-3">
-                    <button
-                        onClick={handleRefresh}
-                        disabled={refreshing}
-                        className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg transition disabled:opacity-50"
-                    >
-                        <FiRefreshCw className={refreshing ? 'animate-spin' : ''} />
-                        Refresh
-                    </button>
-                    <Link
-                        to="/dashboard/founder/upload"
-                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition"
-                    >
-                        <FiPlus />
-                        New Proposal
-                    </Link>
-                </div>
-            </div>
-
+<div className="flex flex-wrap justify-between items-center gap-4 mb-6">
+    <div>
+        <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
+            <FiBriefcase className="text-blue-600" />
+            Founder Dashboard
+        </h1>
+        <p className="text-gray-600">Manage your startup proposals</p>
+    </div>
+    <div className="flex gap-3">
+        {/* ✅ NEW: My Escrows Button */}
+        <Link
+            to="/escrow"
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition"
+        >
+            <FiDollarSign />
+            My Escrows
+        </Link>
+        
+        <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg transition disabled:opacity-50"
+        >
+            <FiRefreshCw className={refreshing ? 'animate-spin' : ''} />
+            Refresh
+        </button>
+        <Link
+            to="/dashboard/founder/upload"
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition"
+        >
+            <FiPlus />
+            New Proposal
+        </Link>
+    </div>
+</div>
             {/* Messages */}
             {success && (
                 <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 text-green-700">
@@ -592,6 +599,17 @@ const FounderDashboard = () => {
                 >
                     <FiMail className="inline mr-2" /> Requests ({requests.length})
                 </button>
+                {/* ✅ NEW ESCROW TAB */}
+                <button
+                    onClick={() => setActiveTab('escrow')}
+                    className={`px-6 py-3 text-sm font-medium whitespace-nowrap transition ${
+                        activeTab === 'escrow'
+                            ? 'text-green-600 border-b-2 border-green-600'
+                            : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    <FiDollarSign className="inline mr-2" /> Milestone Escrow
+                </button>
             </div>
 
             {/* Content */}
@@ -604,6 +622,13 @@ const FounderDashboard = () => {
                 <>
                     {activeTab === 'proposals' && renderProposals()}
                     {activeTab === 'requests' && renderRequests()}
+                    {/* ✅ NEW: Escrow Dashboard */}
+                    {activeTab === 'escrow' && (
+                        <FounderEscrowDashboard 
+                            founderId={localStorage.getItem('userId')}
+                            startups={proposals}
+                        />
+                    )}
                 </>
             )}
 

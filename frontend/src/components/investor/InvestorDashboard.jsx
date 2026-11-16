@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { investorService } from '../../services/investorService';
+import InvestorEscrowDashboard from '../escrow/InvestorEscrowDashboard';
 import { 
     FiSearch, FiBriefcase, FiClock, FiCheckCircle, 
     FiEye, FiRefreshCw, FiMail,
     FiStar, FiDollarSign,
     FiPieChart,
-    FiPlus, FiCheck, FiX, FiUnlock
+    FiPlus, FiCheck, FiX, FiUnlock,
+    FiTarget
 } from 'react-icons/fi';
-
+import { Link } from 'react-router-dom';
 const InvestorDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -22,7 +24,6 @@ const InvestorDashboard = () => {
     const [success, setSuccess] = useState('');
     const [processing, setProcessing] = useState({});
     const [viewingProposal, setViewingProposal] = useState({});
-    const [investing, setInvesting] = useState({});
 
     useEffect(() => {
         loadData();
@@ -134,26 +135,6 @@ const InvestorDashboard = () => {
         }
     };
 
-    const handleInvest = async (startupId) => {
-        const amount = prompt('Enter the investment amount (₹):');
-        if (!amount) return;
-        
-        setInvesting(prev => ({ ...prev, [startupId]: true }));
-        setError('');
-        setSuccess('');
-        
-        try {
-            await investorService.invest(startupId, parseFloat(amount));
-            setSuccess('Investment recorded successfully!');
-            setTimeout(() => setSuccess(''), 3000);
-            await loadData();
-        } catch (err) {
-            setError('Failed to invest: ' + err.message);
-        } finally {
-            setInvesting(prev => ({ ...prev, [startupId]: false }));
-        }
-    };
-
     const getStatusBadge = (status) => {
         switch (status) {
             case 'INDEXED':
@@ -190,11 +171,11 @@ const InvestorDashboard = () => {
                     <p className="text-2xl font-bold text-gray-800">{proposals.length}</p>
                 </div>
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                    <p className="text-sm text-gray-500">Invested Startups</p>
+                    <p className="text-sm text-gray-500">Active Escrows</p>
                     <p className="text-2xl font-bold text-blue-600">{investedProposals.length}</p>
                 </div>
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                    <p className="text-sm text-gray-500">Total Invested</p>
+                    <p className="text-sm text-gray-500">Total Released</p>
                     <p className="text-2xl font-bold text-green-600">₹{totalInvested.toLocaleString()}</p>
                 </div>
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -287,23 +268,18 @@ const InvestorDashboard = () => {
                                             )}
                                         </button>
                                         <button
-                                            onClick={() => handleInvest(proposal.startupId)}
-                                            disabled={investing[proposal.startupId]}
-                                            className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
+                                            onClick={() => {
+                                                setActiveTab('escrow');
+                                            }}
+                                            className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition"
                                         >
-                                            {investing[proposal.startupId] ? (
-                                                <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                                            ) : (
-                                                <>
-                                                    <FiPlus /> Invest
-                                                </>
-                                            )}
+                                            <FiPlus /> Fund via Escrow
                                         </button>
                                     </>
                                 )}
                                 {!proposal.requested && proposal.status === 'INDEXED' && (
                                     <span className="text-sm text-gray-400 bg-gray-100 px-3 py-1.5 rounded-lg">
-                                        Request access to invest
+                                        Request access to fund
                                     </span>
                                 )}
                             </div>
@@ -319,8 +295,8 @@ const InvestorDashboard = () => {
             {investedProposals.length === 0 ? (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
                     <FiDollarSign className="mx-auto text-gray-300 text-5xl mb-4" />
-                    <h3 className="text-xl font-semibold text-gray-700 mb-2">No Investments Yet</h3>
-                    <p className="text-gray-500">Start investing in promising startups</p>
+                    <h3 className="text-xl font-semibold text-gray-700 mb-2">No Active Escrows</h3>
+                    <p className="text-gray-500">Start funding startups through milestone escrows</p>
                 </div>
             ) : (
                 investedProposals.map((proposal) => (
@@ -333,22 +309,17 @@ const InvestorDashboard = () => {
                                     <span className="text-sm text-gray-300">•</span>
                                     <span className="text-sm text-gray-500">{proposal.stage}</span>
                                     <span className="text-sm text-gray-300">•</span>
-                                    <span className="text-sm text-green-600 font-medium">Invested</span>
+                                    <span className="text-sm text-green-600 font-medium">Active Escrow</span>
                                 </div>
                                 {proposal.aiSummary && (
                                     <p className="text-sm text-gray-600 mt-2 line-clamp-2">{proposal.aiSummary}</p>
                                 )}
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                    <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2.5 py-1 rounded-full text-xs font-medium">
-                                        <FiDollarSign /> ₹{proposal.investedAmount?.toLocaleString() || 'N/A'}
-                                    </span>
-                                </div>
                             </div>
                             <button
-                                onClick={() => handleViewProposal(proposal.startupId)}
+                                onClick={() => setActiveTab('escrow')}
                                 className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition"
                             >
-                                <FiEye /> View Details
+                                <FiEye /> View Escrow
                             </button>
                         </div>
                     </div>
@@ -427,10 +398,10 @@ const InvestorDashboard = () => {
                             )}
                             {request.permissionGranted && (
                                 <button
-                                    onClick={() => handleViewProposal(request.startupId)}
-                                    className="flex items-center gap-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition"
+                                    onClick={() => setActiveTab('escrow')}
+                                    className="flex items-center gap-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition"
                                 >
-                                    <FiEye /> View Proposal
+                                    <FiPlus /> Fund via Escrow
                                 </button>
                             )}
                         </div>
@@ -472,19 +443,6 @@ const InvestorDashboard = () => {
                                 >
                                     View
                                 </button>
-                                <button
-                                    onClick={() => handleInvest(rec.startupId)}
-                                    disabled={investing[rec.startupId]}
-                                    className="px-4 py-2 bg-green-50 hover:bg-green-100 text-green-600 text-sm font-medium rounded-lg transition disabled:opacity-50"
-                                >
-                                    {investing[rec.startupId] ? (
-                                        <div className="animate-spin h-4 w-4 border-2 border-green-600 border-t-transparent rounded-full"></div>
-                                    ) : (
-                                        <>
-                                            <FiPlus /> Invest
-                                        </>
-                                    )}
-                                </button>
                             </div>
                         </div>
                     </div>
@@ -499,11 +457,11 @@ const InvestorDashboard = () => {
             {portfolio ? (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-gray-50 rounded-lg p-4">
-                        <p className="text-sm text-gray-500">Total Invested</p>
+                        <p className="text-sm text-gray-500">Total Released</p>
                         <p className="text-2xl font-bold text-gray-800">₹{portfolio.totalInvested?.toLocaleString() || '0'}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-4">
-                        <p className="text-sm text-gray-500">Startups</p>
+                        <p className="text-sm text-gray-500">Startups Funded</p>
                         <p className="text-2xl font-bold text-gray-800">{portfolio.startups || 0}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-4">
@@ -519,24 +477,34 @@ const InvestorDashboard = () => {
 
     return (
         <div className="max-w-7xl mx-auto p-6">
-            {/* Header */}
             <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
-                        <FiBriefcase className="text-green-600" />
-                        Investor Dashboard
-                    </h1>
-                    <p className="text-gray-600">Discover and invest in promising startups</p>
-                </div>
-                <button
-                    onClick={handleRefresh}
-                    disabled={refreshing}
-                    className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg transition disabled:opacity-50"
-                >
-                    <FiRefreshCw className={refreshing ? 'animate-spin' : ''} />
-                    Refresh
-                </button>
-            </div>
+    <div>
+        <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-2">
+            <FiBriefcase className="text-green-600" />
+            Investor Dashboard
+        </h1>
+        <p className="text-gray-600">Discover and invest in promising startups</p>
+    </div>
+    <div className="flex gap-3">
+        {/* ✅ NEW: My Escrows Button */}
+        <Link
+            to="/escrow"
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-lg transition"
+        >
+            <FiDollarSign />
+            My Escrows
+        </Link>
+        
+        <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg transition disabled:opacity-50"
+        >
+            <FiRefreshCw className={refreshing ? 'animate-spin' : ''} />
+            Refresh
+        </button>
+    </div>
+</div>
 
             {/* Messages */}
             {success && (
@@ -566,6 +534,16 @@ const InvestorDashboard = () => {
                     <FiSearch className="inline mr-2" /> Browse Startups
                 </button>
                 <button
+                    onClick={() => setActiveTab('escrow')}
+                    className={`px-6 py-3 text-sm font-medium whitespace-nowrap transition ${
+                        activeTab === 'escrow'
+                            ? 'text-green-600 border-b-2 border-green-600'
+                            : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    <FiTarget className="inline mr-2" /> Milestone Escrow
+                </button>
+                <button
                     onClick={() => setActiveTab('invested')}
                     className={`px-6 py-3 text-sm font-medium whitespace-nowrap transition ${
                         activeTab === 'invested'
@@ -573,7 +551,7 @@ const InvestorDashboard = () => {
                             : 'text-gray-500 hover:text-gray-700'
                     }`}
                 >
-                    <FiDollarSign className="inline mr-2" /> Invested ({investedProposals.length})
+                    <FiDollarSign className="inline mr-2" /> Funded ({investedProposals.length})
                 </button>
                 <button
                     onClick={() => setActiveTab('requests')}
@@ -616,6 +594,12 @@ const InvestorDashboard = () => {
             ) : (
                 <>
                     {activeTab === 'proposals' && renderProposals()}
+                    {activeTab === 'escrow' && (
+                        <InvestorEscrowDashboard 
+                            investorId={localStorage.getItem('userId')}
+                            startups={proposals.filter(p => p.requested && p.requestStatus === 'ACCEPTED')}
+                        />
+                    )}
                     {activeTab === 'invested' && renderInvested()}
                     {activeTab === 'requests' && renderRequests()}
                     {activeTab === 'recommendations' && renderRecommendations()}

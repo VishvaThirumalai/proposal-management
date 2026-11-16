@@ -33,6 +33,8 @@ public class InvestorController {
     private final RequestRepository requestRepository;
     private final ReEncryptionKeyRepository reEncryptionKeyRepository;
     private final AccessLogRepository accessLogRepository;
+    private final EscrowRepository escrowRepository;
+    private final EscrowMilestoneRepository escrowMilestoneRepository;
     private final IPFSService ipfsService;
 
     // ================================================================
@@ -58,10 +60,8 @@ public class InvestorController {
                 map.put("status", p.getStatus());
                 map.put("createdAt", p.getCreatedAt());
 
-                // Check if already requested
                 Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-                String email = auth.getName();
-                User investor = userRepository.findByEmail(email).orElse(null);
+                User investor = userRepository.findByEmail(auth.getName()).orElse(null);
                 if (investor != null) {
                     Optional<Request> existing = requestRepository.findByStartupStartupIdAndRecipientUserId(
                             p.getStartupId(), investor.getUserId());
@@ -77,51 +77,6 @@ public class InvestorController {
         } catch (Exception e) {
             log.error("❌ Failed to load proposals: {}", e.getMessage());
             return ResponseEntity.badRequest().body("Failed to load proposals: " + e.getMessage());
-        }
-    }
-       // ================================================================
-    // 12. GET INVESTED PROPOSALS
-    // ================================================================
-    @GetMapping("/invested")
-    public ResponseEntity<?> getInvestedProposals() {
-        try {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            String email = auth.getName();
-            User investor = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("Investor not found"));
-
-            log.info("📊 Getting invested proposals for investor: {}", investor.getName());
-
-            // Get all requests where this investor is the recipient
-            List<Request> requests = requestRepository.findByRecipientUserId(investor.getUserId());
-
-            List<Map<String, Object>> investedProposals = new ArrayList<>();
-
-            for (Request req : requests) {
-                // Only include proposals where access is granted (permissionGranted = true)
-                if (req.getPermissionGranted() != null && req.getPermissionGranted()) {
-                    Startup p = req.getStartup();
-                    Map<String, Object> map = new HashMap<>();
-                    map.put("startupId", p.getStartupId());
-                    map.put("title", p.getTitle());
-                    map.put("domain", p.getDomain());
-                    map.put("stage", p.getStage() != null ? p.getStage().name() : "N/A");
-                    map.put("fundingAmount", p.getFundingAmount());
-                    map.put("aiSummary", p.getAiSummary());
-                    map.put("ipfsCid", p.getIpfsCid());
-                    map.put("status", p.getStatus());
-                    map.put("grantedAt", req.getUpdatedAt());
-                    map.put("amount", p.getFundingAmount());
-                    investedProposals.add(map);
-                }
-            }
-
-            log.info("✅ Found {} invested proposals", investedProposals.size());
-            return ResponseEntity.ok(investedProposals);
-
-        } catch (Exception e) {
-            log.error("❌ Failed to get invested proposals: {}", e.getMessage());
-            return ResponseEntity.badRequest().body("Failed to get invested proposals: " + e.getMessage());
         }
     }
 
@@ -153,10 +108,8 @@ public class InvestorController {
                 }
             }
 
-            log.info("✅ Found {} matching proposals", filtered.size());
             return ResponseEntity.ok(filtered);
         } catch (Exception e) {
-            log.error("❌ Search failed: {}", e.getMessage());
             return ResponseEntity.badRequest().body("Search failed: " + e.getMessage());
         }
     }
@@ -168,11 +121,8 @@ public class InvestorController {
     public ResponseEntity<?> getRecommendations() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            String email = auth.getName();
-            User investor = userRepository.findByEmail(email)
+            User investor = userRepository.findByEmail(auth.getName())
                     .orElseThrow(() -> new RuntimeException("Investor not found"));
-
-            log.info("📊 Getting recommendations for investor: {}", investor.getName());
 
             List<Startup> allProposals = startupRepository.findByStatus("INDEXED");
             List<Map<String, Object>> recommendations = new ArrayList<>();
@@ -191,16 +141,13 @@ public class InvestorController {
                 recommendations.add(map);
             }
 
-            // Limit to top 20
             if (recommendations.size() > 20) {
                 recommendations = recommendations.subList(0, 20);
             }
 
-            log.info("✅ Found {} recommendations", recommendations.size());
             return ResponseEntity.ok(recommendations);
         } catch (Exception e) {
-            log.error("❌ Failed to get recommendations: {}", e.getMessage());
-            return ResponseEntity.badRequest().body("Failed to get recommendations: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Failed: " + e.getMessage());
         }
     }
 
@@ -211,11 +158,8 @@ public class InvestorController {
     public ResponseEntity<?> getRequests() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            String email = auth.getName();
-            User investor = userRepository.findByEmail(email)
+            User investor = userRepository.findByEmail(auth.getName())
                     .orElseThrow(() -> new RuntimeException("Investor not found"));
-
-            log.info("📬 Getting requests for investor: {}", investor.getName());
 
             List<Request> requests = requestRepository.findByRecipientUserId(investor.getUserId());
 
@@ -239,11 +183,9 @@ public class InvestorController {
                         .build());
             }
 
-            log.info("✅ Found {} requests", response.size());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("❌ Failed to get requests: {}", e.getMessage());
-            return ResponseEntity.badRequest().body("Failed to get requests: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Failed: " + e.getMessage());
         }
     }
 
@@ -257,11 +199,8 @@ public class InvestorController {
             @RequestBody ApproveRequestDTO requestDTO) {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            String email = auth.getName();
-            User investor = userRepository.findByEmail(email)
+            User investor = userRepository.findByEmail(auth.getName())
                     .orElseThrow(() -> new RuntimeException("Investor not found"));
-
-            log.info("📝 Investor {} responding to request: {}", investor.getName(), requestId);
 
             Request request = requestRepository.findById(requestId)
                     .orElseThrow(() -> new RuntimeException("Request not found"));
@@ -279,21 +218,15 @@ public class InvestorController {
                 request.setUpdatedAt(LocalDateTime.now());
                 requestRepository.save(request);
 
-                log.info("✅ Investor {} accepted request: {}", investor.getName(), requestId);
-
                 return ResponseEntity.ok(Map.of(
                         "success", true,
                         "message", "✅ Request accepted! Waiting for founder to grant access.",
-                        "requestId", request.getRequestId(),
-                        "startupTitle", request.getStartup().getTitle(),
-                        "founderName", request.getFounder().getName()
+                        "requestId", request.getRequestId()
                 ));
             } else {
                 request.setStatus(RequestStatus.REJECTED);
                 request.setUpdatedAt(LocalDateTime.now());
                 requestRepository.save(request);
-
-                log.info("❌ Investor {} rejected request: {}", investor.getName(), requestId);
 
                 return ResponseEntity.ok(Map.of(
                         "success", true,
@@ -301,10 +234,8 @@ public class InvestorController {
                         "requestId", request.getRequestId()
                 ));
             }
-
         } catch (Exception e) {
-            log.error("❌ Failed to respond to request: {}", e.getMessage());
-            return ResponseEntity.badRequest().body("Failed to respond to request: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Failed: " + e.getMessage());
         }
     }
 
@@ -315,11 +246,8 @@ public class InvestorController {
     public ResponseEntity<?> getAssignedProposals() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            String email = auth.getName();
-            User investor = userRepository.findByEmail(email)
+            User investor = userRepository.findByEmail(auth.getName())
                     .orElseThrow(() -> new RuntimeException("Investor not found"));
-
-            log.info("📋 Getting assigned proposals for investor: {}", investor.getName());
 
             List<Request> acceptedRequests = requestRepository.findByRecipientUserIdAndStatus(
                     investor.getUserId(), RequestStatus.ACCEPTED);
@@ -342,16 +270,14 @@ public class InvestorController {
                 response.add(map);
             }
 
-            log.info("✅ Found {} assigned proposals", response.size());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("❌ Failed to get assigned proposals: {}", e.getMessage());
-            return ResponseEntity.badRequest().body("Failed to get assigned proposals: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Failed: " + e.getMessage());
         }
     }
 
     // ================================================================
-    // 7. VIEW PROPOSAL WITH PRE (UPDATED)
+    // 7. VIEW PROPOSAL (PRE)
     // ================================================================
     @PostMapping("/view-proposal")
     public ResponseEntity<?> viewProposal(@RequestBody Map<String, String> request) {
@@ -364,17 +290,12 @@ public class InvestorController {
             }
 
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            String email = auth.getName();
-            User investor = userRepository.findByEmail(email)
+            User investor = userRepository.findByEmail(auth.getName())
                     .orElseThrow(() -> new RuntimeException("Investor not found"));
 
-            log.info("🔐 Investor {} requesting to view proposal: {}", investor.getName(), startupId);
-
-            // Get startup
             Startup startup = startupRepository.findById(startupId)
                     .orElseThrow(() -> new RuntimeException("Startup not found"));
 
-            // Check if access is granted
             Optional<ReEncryptionKey> reKeyOpt = reEncryptionKeyRepository
                     .findActiveByStartupAndUser(startupId, investor.getUserId());
 
@@ -387,30 +308,19 @@ public class InvestorController {
                 return ResponseEntity.badRequest().body("Access has been revoked");
             }
 
-            // ✅ Get the re-encrypted AES key (RK) - encrypted with investor's public key
             String reEncryptedAesKey = reKey.getEncryptedRk();
-            log.debug("🔑 RK length: {}", reEncryptedAesKey.length());
-            
-            // ✅ Decrypt the AES key using investor's private key
+
             String aesKeyBase64 = ipfsService.decryptAESKeyWithPrivateKey(
-                reEncryptedAesKey,
-                investorPrivateKey
+                    reEncryptedAesKey,
+                    investorPrivateKey
             );
-            log.debug("🔑 Decrypted AES key length: {}", aesKeyBase64.length());
-            
+
             byte[] aesKeyBytes = Base64.getDecoder().decode(aesKeyBase64);
             SecretKey aesKey = new SecretKeySpec(aesKeyBytes, "AES");
-            log.info("🔑 AES key recovered successfully");
 
-            // Download encrypted proposal from IPFS
             byte[] encryptedProposal = ipfsService.downloadFromIPFS(startup.getIpfsCid());
-            log.info("📥 Downloaded encrypted proposal: {} bytes", encryptedProposal.length);
-
-            // Decrypt proposal using AES key
             byte[] decryptedProposal = ipfsService.decryptAES(encryptedProposal, aesKey);
-            log.info("🔓 Proposal decrypted successfully: {} bytes", decryptedProposal.length);
 
-            // Log access
             AccessLog accessLog = AccessLog.builder()
                     .startup(startup)
                     .user(investor)
@@ -418,15 +328,13 @@ public class InvestorController {
                     .accessedAt(LocalDateTime.now())
                     .build();
             accessLogRepository.save(accessLog);
-            log.info("📝 Access logged for proposal: {}", startupId);
 
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_TYPE, "application/pdf")
                     .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=proposal.pdf")
                     .body(decryptedProposal);
-
         } catch (Exception e) {
-            log.error("❌ Failed to view proposal: {}", e.getMessage(), e);
+            log.error("❌ Failed to view proposal: {}", e.getMessage());
             return ResponseEntity.badRequest().body("Failed to view proposal: " + e.getMessage());
         }
     }
@@ -438,11 +346,8 @@ public class InvestorController {
     public ResponseEntity<?> checkAccessStatus(@PathVariable Long startupId) {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            String email = auth.getName();
-            User investor = userRepository.findByEmail(email)
+            User investor = userRepository.findByEmail(auth.getName())
                     .orElseThrow(() -> new RuntimeException("Investor not found"));
-
-            log.info("🔍 Checking access status for investor {} on startup {}", investor.getName(), startupId);
 
             Optional<ReEncryptionKey> reKey = reEncryptionKeyRepository
                     .findActiveByStartupAndUser(startupId, investor.getUserId());
@@ -463,8 +368,7 @@ public class InvestorController {
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("❌ Failed to check access status: {}", e.getMessage());
-            return ResponseEntity.badRequest().body("Failed to check access status: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Failed: " + e.getMessage());
         }
     }
 
@@ -475,11 +379,8 @@ public class InvestorController {
     public ResponseEntity<?> getAccessLogs() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            String email = auth.getName();
-            User investor = userRepository.findByEmail(email)
+            User investor = userRepository.findByEmail(auth.getName())
                     .orElseThrow(() -> new RuntimeException("Investor not found"));
-
-            log.info("📋 Getting access logs for investor: {}", investor.getName());
 
             List<AccessLog> logs = accessLogRepository.findByUserUserId(investor.getUserId());
 
@@ -494,11 +395,9 @@ public class InvestorController {
                 response.add(map);
             }
 
-            log.info("✅ Found {} access logs", response.size());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("❌ Failed to get access logs: {}", e.getMessage());
-            return ResponseEntity.badRequest().body("Failed to get access logs: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Failed: " + e.getMessage());
         }
     }
 
@@ -509,110 +408,103 @@ public class InvestorController {
     public ResponseEntity<?> getPortfolio() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            String email = auth.getName();
-            User investor = userRepository.findByEmail(email)
+            User investor = userRepository.findByEmail(auth.getName())
                     .orElseThrow(() -> new RuntimeException("Investor not found"));
 
-            log.info("📊 Getting portfolio for investor: {}", investor.getName());
-
-            List<Request> acceptedRequests = requestRepository.findByRecipientUserIdAndStatus(
-                    investor.getUserId(), RequestStatus.ACCEPTED);
+            // Get all escrows by this investor
+            List<Escrow> escrows = escrowRepository.findByInvestorId(investor.getUserId());
 
             List<Map<String, Object>> portfolio = new ArrayList<>();
             double totalInvested = 0;
+            double totalReleased = 0;
 
-            for (Request req : acceptedRequests) {
-                if (req.getPermissionGranted()) {
-                    Startup p = req.getStartup();
-                    Map<String, Object> map = new HashMap<>();
-                    map.put("startupId", p.getStartupId());
-                    map.put("title", p.getTitle());
-                    map.put("domain", p.getDomain());
-                    map.put("stage", p.getStage() != null ? p.getStage().name() : "N/A");
-                    map.put("fundingAmount", p.getFundingAmount());
-                    map.put("aiSummary", p.getAiSummary());
-                    map.put("investedAt", req.getUpdatedAt());
-                    map.put("status", "ACTIVE");
-                    portfolio.add(map);
+            for (Escrow escrow : escrows) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("escrowId", escrow.getEscrowId());
+                map.put("startupId", escrow.getStartupId());
+                map.put("totalAmount", escrow.getTotalAmount());
+                map.put("releasedAmount", escrow.getReleasedAmount());
+                map.put("status", escrow.getStatus());
+                map.put("createdAt", escrow.getCreatedAt());
+                portfolio.add(map);
 
-                    if (p.getFundingAmount() != null) {
-                        totalInvested += p.getFundingAmount();
-                    }
-                }
+                totalInvested += escrow.getTotalAmount() != null ? escrow.getTotalAmount() : 0;
+                totalReleased += escrow.getReleasedAmount() != null ? escrow.getReleasedAmount() : 0;
             }
 
             Map<String, Object> response = new HashMap<>();
             response.put("totalInvested", totalInvested);
-            response.put("startups", portfolio.size());
+            response.put("totalReleased", totalReleased);
+            response.put("startups", escrows.size());
             response.put("portfolio", portfolio);
 
-            log.info("✅ Portfolio: {} startups, ₹{} invested", portfolio.size(), totalInvested);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("❌ Failed to get portfolio: {}", e.getMessage());
-            return ResponseEntity.badRequest().body("Failed to get portfolio: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Failed: " + e.getMessage());
         }
     }
 
     // ================================================================
-    // 11. INVEST IN STARTUP
+    // 11. ✅ NEW: GET INVESTED PROPOSALS (based on escrows, not flags)
     // ================================================================
-    @PostMapping("/invest")
-    @Transactional
-    public ResponseEntity<?> investInStartup(@RequestBody Map<String, Object> request) {
+    @GetMapping("/invested")
+    public ResponseEntity<?> getInvestedProposals() {
         try {
-            Long startupId = Long.parseLong(request.get("startupId").toString());
-            Double amount = request.get("amount") != null ?
-                    Double.parseDouble(request.get("amount").toString()) : null;
-
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            String email = auth.getName();
-            User investor = userRepository.findByEmail(email)
+            User investor = userRepository.findByEmail(auth.getName())
                     .orElseThrow(() -> new RuntimeException("Investor not found"));
 
-            log.info("💰 Investor {} investing in startup: {}", investor.getName(), startupId);
+            // Fetch escrows for this investor (these represent "investments")
+            List<Escrow> escrows = escrowRepository.findByInvestorId(investor.getUserId());
 
-            Startup startup = startupRepository.findById(startupId)
-                    .orElseThrow(() -> new RuntimeException("Startup not found"));
+            List<Map<String, Object>> investedProposals = new ArrayList<>();
 
-            // Check if already invested
-            Optional<Request> existing = requestRepository.findByStartupStartupIdAndRecipientUserId(
-                    startupId, investor.getUserId());
+            for (Escrow escrow : escrows) {
+                Startup p = startupRepository.findById(escrow.getStartupId()).orElse(null);
+                if (p == null) continue;
 
-            if (existing.isPresent() && existing.get().getPermissionGranted()) {
-                return ResponseEntity.badRequest().body("Already invested in this startup");
+                Map<String, Object> map = new HashMap<>();
+                map.put("escrowId", escrow.getEscrowId());
+                map.put("startupId", p.getStartupId());
+                map.put("title", p.getTitle());
+                map.put("domain", p.getDomain());
+                map.put("stage", p.getStage() != null ? p.getStage().name() : "N/A");
+                map.put("fundingAmount", escrow.getTotalAmount());
+                map.put("releasedAmount", escrow.getReleasedAmount());
+                map.put("aiSummary", p.getAiSummary());
+                map.put("ipfsCid", p.getIpfsCid());
+                map.put("status", escrow.getStatus());
+                map.put("escrowStatus", escrow.getStatus());
+                map.put("createdAt", escrow.getCreatedAt());
+
+                // Include milestone summary
+                List<EscrowMilestone> milestones = escrowMilestoneRepository.findByEscrowId(escrow.getEscrowId());
+                map.put("totalMilestones", milestones.size());
+                map.put("approvedMilestones", milestones.stream()
+                        .filter(m -> "APPROVED".equals(m.getStatus()) || "RELEASED".equals(m.getStatus()))
+                        .count());
+
+                investedProposals.add(map);
             }
 
-            Optional<Request> acceptedRequest = requestRepository.findAcceptedByStartupAndRecipient(
-                    startupId, investor.getUserId());
-
-            if (acceptedRequest.isEmpty()) {
-                return ResponseEntity.badRequest().body("No accepted request found. Please request access first.");
-            }
-
-            Request req = acceptedRequest.get();
-            if (!req.getPermissionGranted()) {
-                return ResponseEntity.badRequest().body("Access not granted yet. Please wait for founder approval.");
-            }
-
-            req.setStatus(RequestStatus.ACCEPTED);
-            req.setUpdatedAt(LocalDateTime.now());
-            requestRepository.save(req);
-
-            log.info("✅ Investor {} invested ₹{} in startup {}",
-                    investor.getName(), amount, startup.getTitle());
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "Investment recorded successfully!",
-                    "startupId", startupId,
-                    "startupTitle", startup.getTitle(),
-                    "amount", amount != null ? amount : "Not specified"
-            ));
-
+            return ResponseEntity.ok(investedProposals);
         } catch (Exception e) {
-            log.error("❌ Failed to invest: {}", e.getMessage());
-            return ResponseEntity.badRequest().body("Failed to invest: " + e.getMessage());
+            log.error("❌ Failed to get invested proposals: {}", e.getMessage());
+            return ResponseEntity.badRequest().body("Failed: " + e.getMessage());
         }
+    }
+
+    // ================================================================
+    // 12. ✅ DEPRECATED: Old invest endpoint
+    //     Now redirects to escrow creation flow
+    // ================================================================
+    @PostMapping("/invest")
+    @Deprecated
+    public ResponseEntity<?> investInStartup(@RequestBody Map<String, Object> request) {
+        // This endpoint is deprecated.
+        // Investors should now create milestone escrows instead.
+        return ResponseEntity.badRequest().body(
+                "Direct investment is deprecated. Please create a Milestone Escrow instead: POST /escrow/create"
+        );
     }
 }

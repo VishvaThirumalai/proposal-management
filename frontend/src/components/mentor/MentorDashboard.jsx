@@ -1,28 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { mentorService } from '../../services/mentorService';
-import { 
-    FiSearch, FiUsers, FiClock, FiCheckCircle, 
-    FiEye, FiRefreshCw, FiMail,
-    FiStar, FiBookOpen,
-    FiCheck, FiX,
-    FiUnlock
+import MentorEscrowDashboard from '../escrow/MentorEscrowDashboard';
+import {
+    FiUsers, FiSearch, FiMail, FiEye, FiCheck, FiX,
+    FiRefreshCw, FiClock, FiCheckCircle, FiAward,
+    FiUnlock, FiLock, FiFile, FiBriefcase
 } from 'react-icons/fi';
 
 const MentorDashboard = () => {
+    const [activeTab, setActiveTab] = useState('assigned');
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [activeTab, setActiveTab] = useState('proposals');
-    const [proposals, setProposals] = useState([]);
-    const [assignedProposals, setAssignedProposals] = useState([]);
+    const [assignedStartups, setAssignedStartups] = useState([]);
+    const [searchResults, setSearchResults] = useState([]);
     const [requests, setRequests] = useState([]);
-    const [recommendations, setRecommendations] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [searching, setSearching] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [processing, setProcessing] = useState({});
     const [viewingProposal, setViewingProposal] = useState({});
+    const [userId, setUserId] = useState(null);
 
     useEffect(() => {
+        const storedUserId = localStorage.getItem('userId');
+        setUserId(storedUserId);
         loadData();
     }, []);
 
@@ -30,17 +32,12 @@ const MentorDashboard = () => {
         setLoading(true);
         setError('');
         try {
-            const [proposalsData, assignedData, requestsData, recommendationsData] = await Promise.all([
-                mentorService.getProposals(),
-                mentorService.getAssignedProposals(),
-                mentorService.getRequests(),
-                mentorService.getRecommendations()
+            const [assignedData, requestsData] = await Promise.all([
+                mentorService.getAssignedProposals().catch(() => []),
+                mentorService.getRequests().catch(() => [])
             ]);
-            
-            setProposals(proposalsData || []);
-            setAssignedProposals(assignedData || []);
+            setAssignedStartups(assignedData || []);
             setRequests(requestsData || []);
-            setRecommendations(recommendationsData || []);
         } catch (err) {
             setError('Failed to load data: ' + err.message);
         } finally {
@@ -49,21 +46,41 @@ const MentorDashboard = () => {
         }
     };
 
-    const handleRefresh = async () => {
+    const handleRefresh = () => {
         setRefreshing(true);
-        await loadData();
+        loadData();
     };
 
     const handleSearch = async () => {
         if (!searchQuery.trim()) {
-            await loadData();
+            setSearchResults([]);
             return;
         }
+
+        setSearching(true);
+        setError('');
+
         try {
             const results = await mentorService.searchProposals(searchQuery);
-            setProposals(results || []);
+            setSearchResults(results || []);
         } catch (err) {
             setError('Search failed: ' + err.message);
+        } finally {
+            setSearching(false);
+        }
+    };
+
+    const handleRequestAccess = async (proposalId) => {
+        const message = prompt('Enter a message for the founder:');
+        if (message === null) return;
+
+        try {
+            await mentorService.requestAccess(proposalId, message);
+            setSuccess('Access request sent successfully!');
+            setTimeout(() => setSuccess(''), 3000);
+            await loadData();
+        } catch (err) {
+            setError('Failed to send request: ' + err.message);
         }
     };
 
@@ -71,7 +88,7 @@ const MentorDashboard = () => {
         setProcessing(prev => ({ ...prev, [requestId]: true }));
         setError('');
         setSuccess('');
-        
+
         try {
             const result = await mentorService.respondToRequest(requestId, accept);
             setSuccess(result.message);
@@ -85,49 +102,48 @@ const MentorDashboard = () => {
     };
 
     const handleViewProposal = async (startupId) => {
-        // Check if already have access
         try {
             const status = await mentorService.checkAccessStatus(startupId);
-            if (status.hasAccess) {
-                // Request private key from user
-                const fileInput = document.createElement('input');
-                fileInput.type = 'file';
-                fileInput.accept = '.key';
-                
-                fileInput.onchange = async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    
-                    const reader = new FileReader();
-                    reader.onload = async (event) => {
-                        const privateKey = event.target.result;
-                        setViewingProposal(prev => ({ ...prev, [startupId]: true }));
-                        
-                        try {
-                            const blob = await mentorService.viewProposal(startupId, privateKey);
-                            // Download PDF
-                            const url = window.URL.createObjectURL(blob);
-                            const link = document.createElement('a');
-                            link.href = url;
-                            link.download = `proposal_${startupId}.pdf`;
-                            document.body.appendChild(link);
-                            link.click();
-                            link.remove();
-                            window.URL.revokeObjectURL(url);
-                            setSuccess('Proposal downloaded successfully!');
-                            setTimeout(() => setSuccess(''), 3000);
-                        } catch (err) {
-                            setError('Failed to view proposal: ' + err.message);
-                        } finally {
-                            setViewingProposal(prev => ({ ...prev, [startupId]: false }));
-                        }
-                    };
-                    reader.readAsText(file);
-                };
-                fileInput.click();
-            } else {
-                setError('You do not have access to this proposal. Please contact the founder.');
+
+            if (!status.hasAccess) {
+                setError('You do not have access to this proposal yet.');
+                return;
             }
+
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.key';
+
+            fileInput.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    const privateKey = event.target.result;
+                    setViewingProposal(prev => ({ ...prev, [startupId]: true }));
+
+                    try {
+                        const blob = await mentorService.viewProposal(startupId, privateKey);
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = `proposal_${startupId}.pdf`;
+                        document.body.appendChild(link);
+                        link.click();
+                        link.remove();
+                        window.URL.revokeObjectURL(url);
+                        setSuccess('Proposal downloaded successfully!');
+                        setTimeout(() => setSuccess(''), 3000);
+                    } catch (err) {
+                        setError('Failed to view proposal: ' + err.message);
+                    } finally {
+                        setViewingProposal(prev => ({ ...prev, [startupId]: false }));
+                    }
+                };
+                reader.readAsText(file);
+            };
+            fileInput.click();
         } catch (err) {
             setError('Failed to check access: ' + err.message);
         }
@@ -136,11 +152,9 @@ const MentorDashboard = () => {
     const getStatusBadge = (status) => {
         switch (status) {
             case 'INDEXED':
-                return <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2.5 py-1 rounded-full text-xs font-medium"><FiCheckCircle /> Available</span>;
-            case 'ASSIGNED':
-                return <span className="inline-flex items-center gap-1 text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full text-xs font-medium"><FiUsers /> Assigned</span>;
-            case 'PENDING':
-                return <span className="inline-flex items-center gap-1 text-yellow-600 bg-yellow-50 px-2.5 py-1 rounded-full text-xs font-medium"><FiClock /> Pending</span>;
+                return <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2.5 py-1 rounded-full text-xs font-medium"><FiCheckCircle /> Indexed</span>;
+            case 'ACTIVE':
+                return <span className="inline-flex items-center gap-1 text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full text-xs font-medium"><FiClock /> Active</span>;
             default:
                 return <span className="text-xs text-gray-500">{status}</span>;
         }
@@ -159,39 +173,83 @@ const MentorDashboard = () => {
         }
     };
 
-    const renderStats = () => (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <p className="text-sm text-gray-500">Available Proposals</p>
-                <p className="text-2xl font-bold text-gray-800">{proposals.length}</p>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <p className="text-sm text-gray-500">Assigned to Me</p>
-                <p className="text-2xl font-bold text-blue-600">{assignedProposals.length}</p>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <p className="text-sm text-gray-500">Pending Requests</p>
-                <p className="text-2xl font-bold text-yellow-600">
-                    {requests.filter(r => r.status === 'PENDING').length}
-                </p>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <p className="text-sm text-gray-500">Access Granted</p>
-                <p className="text-2xl font-bold text-green-600">
-                    {requests.filter(r => r.permissionGranted).length}
-                </p>
-            </div>
+    const renderAssigned = () => (
+        <div className="space-y-4">
+            {assignedStartups.length === 0 ? (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+                    <FiAward className="mx-auto text-gray-300 text-5xl mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-700 mb-2">
+                        No Assigned Startups
+                    </h3>
+                    <p className="text-gray-500">
+                        Founders will send you mentorship requests. Once you accept, they will appear here.
+                    </p>
+                </div>
+            ) : (
+                assignedStartups.map((startup, idx) => (
+                    <div key={startup.startupId || idx} className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition p-6">
+                        <div className="flex flex-wrap justify-between items-start gap-4">
+                            <div className="flex-1 min-w-0">
+                                <h3 className="text-lg font-semibold text-gray-800">{startup.title}</h3>
+                                <div className="flex flex-wrap items-center gap-2 mt-1">
+                                    <span className="text-sm text-gray-500">{startup.domain}</span>
+                                    <span className="text-sm text-gray-300">•</span>
+                                    <span className="text-sm text-gray-500">{startup.stage}</span>
+                                    <span className="text-sm text-gray-300">•</span>
+                                    <span className="text-sm text-gray-500 font-medium">
+                                        ₹{startup.fundingAmount?.toLocaleString() || '0'}
+                                    </span>
+                                </div>
+                                {startup.aiSummary && (
+                                    <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+                                        {startup.aiSummary}
+                                    </p>
+                                )}
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                    {getStatusBadge(startup.status)}
+                                    {startup.permissionGranted && (
+                                        <span className="inline-flex items-center gap-1 text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full text-xs font-medium">
+                                            <FiUnlock /> Access Granted
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {startup.permissionGranted && (
+                                    <button
+                                        onClick={() => handleViewProposal(startup.startupId)}
+                                        disabled={viewingProposal[startup.startupId]}
+                                        className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
+                                    >
+                                        {viewingProposal[startup.startupId] ? (
+                                            <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                                        ) : (
+                                            <><FiEye /> View Proposal</>
+                                        )}
+                                    </button>
+                                )}
+                                {!startup.permissionGranted && (
+                                    <span className="text-sm text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded-lg">
+                                        Waiting for founder approval
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                ))
+            )}
         </div>
     );
 
-    const renderProposals = () => (
+    const renderSearch = () => (
         <div className="space-y-4">
-            <div className="flex gap-2 mb-4">
-                <div className="flex-1 relative">
+            {/* Search Bar */}
+            <div className="flex flex-wrap gap-2 mb-6">
+                <div className="flex-1 min-w-[200px] relative">
                     <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                     <input
                         type="text"
-                        placeholder="Search proposals by keyword, domain, or title..."
+                        placeholder="Search by keyword, domain, or title..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
@@ -200,133 +258,70 @@ const MentorDashboard = () => {
                 </div>
                 <button
                     onClick={handleSearch}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
+                    disabled={searching}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50"
                 >
-                    Search
+                    {searching ? 'Searching...' : 'Search'}
                 </button>
                 <button
-                    onClick={loadData}
+                    onClick={() => {
+                        setSearchQuery('');
+                        setSearchResults([]);
+                    }}
                     className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
                 >
                     Clear
                 </button>
             </div>
 
-            {proposals.length === 0 ? (
+            {/* Search Results */}
+            {searchResults.length === 0 ? (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-                    <FiBookOpen className="mx-auto text-gray-300 text-5xl mb-4" />
-                    <h3 className="text-xl font-semibold text-gray-700 mb-2">No Proposals Found</h3>
-                    <p className="text-gray-500">Try adjusting your search or check back later</p>
+                    <FiSearch className="mx-auto text-gray-300 text-5xl mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-700 mb-2">
+                        {searchQuery ? 'No Results Found' : 'Start Searching'}
+                    </h3>
+                    <p className="text-gray-500">
+                        {searchQuery
+                            ? 'Try different keywords'
+                            : 'Enter a keyword to search for startups'
+                        }
+                    </p>
                 </div>
             ) : (
-                proposals.map((proposal) => (
-                    <div key={proposal.startupId} className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition p-6">
-                        <div className="flex flex-wrap justify-between items-start gap-4">
-                            <div className="flex-1 min-w-0">
-                                <h3 className="text-lg font-semibold text-gray-800">{proposal.title}</h3>
-                                <div className="flex flex-wrap items-center gap-2 mt-1">
-                                    <span className="text-sm text-gray-500">{proposal.domain}</span>
-                                    <span className="text-sm text-gray-300">•</span>
-                                    <span className="text-sm text-gray-500">{proposal.stage}</span>
-                                    <span className="text-sm text-gray-300">•</span>
-                                    <span className="text-sm text-gray-500">₹{proposal.fundingAmount?.toLocaleString()}</span>
-                                </div>
-                                {proposal.aiSummary && (
-                                    <p className="text-sm text-gray-600 mt-2 line-clamp-2">{proposal.aiSummary}</p>
-                                )}
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                    {getStatusBadge(proposal.status)}
-                                    {proposal.requested && (
-                                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${
-                                            proposal.requestStatus === 'PENDING' ? 'text-yellow-600 bg-yellow-50' :
-                                            proposal.requestStatus === 'ACCEPTED' ? 'text-green-600 bg-green-50' :
-                                            'text-red-600 bg-red-50'
-                                        }`}>
-                                            {proposal.requestStatus}
+                <div className="grid gap-4">
+                    {searchResults.map((startup, idx) => (
+                        <div key={startup.startupId || idx} className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md p-6">
+                            <div className="flex flex-wrap justify-between items-start gap-4">
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="text-lg font-semibold text-gray-800">
+                                        {startup.title}
+                                    </h3>
+                                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                                        <span className="text-sm text-gray-500">{startup.domain}</span>
+                                        <span className="text-sm text-gray-300">•</span>
+                                        <span className="text-sm text-gray-500">{startup.stage}</span>
+                                        <span className="text-sm text-gray-300">•</span>
+                                        <span className="text-sm text-gray-500">
+                                            ₹{startup.fundingAmount?.toLocaleString()}
                                         </span>
+                                    </div>
+                                    {startup.aiSummary && (
+                                        <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+                                            {startup.aiSummary}
+                                        </p>
                                     )}
                                 </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                {proposal.requested && proposal.requestStatus === 'ACCEPTED' && (
-                                    <button
-                                        onClick={() => handleViewProposal(proposal.startupId)}
-                                        disabled={viewingProposal[proposal.startupId]}
-                                        className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
-                                    >
-                                        {viewingProposal[proposal.startupId] ? (
-                                            <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                                        ) : (
-                                            <>
-                                                <FiEye /> View
-                                            </>
-                                        )}
-                                    </button>
-                                )}
-                                {!proposal.requested && proposal.status === 'INDEXED' && (
-                                    <span className="text-sm text-gray-400 bg-gray-100 px-3 py-1.5 rounded-lg">
-                                        Request access to view
-                                    </span>
-                                )}
+                                <button
+                                    onClick={() => handleRequestAccess(startup.startupId)}
+                                    className="flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition"
+                                >
+                                    <FiMail /> Request Access
+                                </button>
                             </div>
                         </div>
-                    </div>
-                ))
-            )}
-        </div>
-    );
-
-    const renderAssigned = () => (
-        <div className="space-y-4">
-            {assignedProposals.length === 0 ? (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-                    <FiUsers className="mx-auto text-gray-300 text-5xl mb-4" />
-                    <h3 className="text-xl font-semibold text-gray-700 mb-2">No Assigned Proposals</h3>
-                    <p className="text-gray-500">You haven't been assigned to any proposals yet</p>
+                    ))}
                 </div>
-            ) : (
-                assignedProposals.map((proposal) => (
-                    <div key={proposal.startupId} className="bg-white rounded-xl shadow-sm border border-blue-200 hover:shadow-md transition p-6">
-                        <div className="flex flex-wrap justify-between items-start gap-4">
-                            <div className="flex-1 min-w-0">
-                                <h3 className="text-lg font-semibold text-gray-800">{proposal.title}</h3>
-                                <div className="flex flex-wrap items-center gap-2 mt-1">
-                                    <span className="text-sm text-gray-500">{proposal.domain}</span>
-                                    <span className="text-sm text-gray-300">•</span>
-                                    <span className="text-sm text-gray-500">{proposal.stage}</span>
-                                    <span className="text-sm text-gray-300">•</span>
-                                    <span className="text-sm text-blue-600 font-medium">Assigned to you</span>
-                                </div>
-                                {proposal.aiSummary && (
-                                    <p className="text-sm text-gray-600 mt-2 line-clamp-2">{proposal.aiSummary}</p>
-                                )}
-                                <div className="flex flex-wrap gap-2 mt-2">
-                                    <span className="inline-flex items-center gap-1 text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full text-xs font-medium">
-                                        <FiUsers /> Active
-                                    </span>
-                                    {proposal.permissionGranted && (
-                                        <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2.5 py-1 rounded-full text-xs font-medium">
-                                            <FiUnlock /> Access Granted
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => handleViewProposal(proposal.startupId)}
-                                disabled={viewingProposal[proposal.startupId]}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
-                            >
-                                {viewingProposal[proposal.startupId] ? (
-                                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                                ) : (
-                                    <>
-                                        <FiEye /> View Details
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                ))
             )}
         </div>
     );
@@ -335,117 +330,72 @@ const MentorDashboard = () => {
         <div className="space-y-4">
             {requests.length === 0 ? (
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-                    <FiClock className="mx-auto text-gray-300 text-5xl mb-4" />
+                    <FiMail className="mx-auto text-gray-300 text-5xl mb-4" />
                     <h3 className="text-xl font-semibold text-gray-700 mb-2">No Requests</h3>
                     <p className="text-gray-500">No pending mentorship requests</p>
                 </div>
             ) : (
-                requests.map((request) => (
-                    <div key={request.requestId} className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition p-6">
+                requests.map((req, idx) => (
+                    <div key={req.requestId || idx} className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition p-6">
                         <div className="flex flex-wrap justify-between items-start gap-4">
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                     <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold">
-                                        {request.founderName?.charAt(0) || 'F'}
+                                        {req.founderName?.charAt(0) || 'F'}
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-semibold text-gray-800">{request.founderName}</h3>
-                                        <p className="text-sm text-gray-500">{request.startupTitle}</p>
+                                        <h3 className="text-lg font-semibold text-gray-800">
+                                            {req.founderName}
+                                        </h3>
+                                        <p className="text-sm text-gray-500">
+                                            {req.startupTitle}
+                                        </p>
                                     </div>
                                 </div>
-                                {request.message && (
-                                    <p className="text-sm text-gray-600 mt-2 italic">"{request.message}"</p>
-                                )}
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                    {getRequestStatusBadge(request.status)}
-                                    {request.permissionGranted && (
-                                        <span className="inline-flex items-center gap-1 text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full text-xs font-medium">
-                                            <FiUnlock /> Access Granted
-                                        </span>
-                                    )}
-                                </div>
-                                {request.createdAt && (
-                                    <p className="text-xs text-gray-400 mt-1">
-                                        Received: {new Date(request.createdAt).toLocaleDateString()}
+                                {req.message && (
+                                    <p className="text-sm text-gray-600 mt-2 italic">
+                                        "{req.message}"
                                     </p>
                                 )}
+                                <div className="mt-2">
+                                    {getRequestStatusBadge(req.status)}
+                                </div>
                             </div>
-                            {request.status === 'PENDING' && (
+                            {req.status === 'PENDING' && (
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={() => handleRespondToRequest(request.requestId, true)}
-                                        disabled={processing[request.requestId]}
+                                        onClick={() => handleRespondToRequest(req.requestId, true)}
+                                        disabled={processing[req.requestId]}
                                         className="flex items-center gap-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
                                     >
-                                        {processing[request.requestId] ? (
+                                        {processing[req.requestId] ? (
                                             <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
                                         ) : (
-                                            <>
-                                                <FiCheck /> Accept
-                                            </>
+                                            <><FiCheck /> Accept</>
                                         )}
                                     </button>
                                     <button
-                                        onClick={() => handleRespondToRequest(request.requestId, false)}
-                                        disabled={processing[request.requestId]}
+                                        onClick={() => handleRespondToRequest(req.requestId, false)}
+                                        disabled={processing[req.requestId]}
                                         className="flex items-center gap-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
                                     >
                                         <FiX /> Decline
                                     </button>
                                 </div>
                             )}
-                            {request.status === 'ACCEPTED' && !request.permissionGranted && (
+                            {req.status === 'ACCEPTED' && !req.permissionGranted && (
                                 <span className="text-sm text-yellow-600 bg-yellow-50 px-3 py-1.5 rounded-lg">
                                     Waiting for founder to grant access...
                                 </span>
                             )}
-                            {request.permissionGranted && (
+                            {req.permissionGranted && (
                                 <button
-                                    onClick={() => handleViewProposal(request.startupId)}
+                                    onClick={() => handleViewProposal(req.startupId)}
                                     className="flex items-center gap-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition"
                                 >
                                     <FiEye /> View Proposal
                                 </button>
                             )}
-                        </div>
-                    </div>
-                ))
-            )}
-        </div>
-    );
-
-    const renderRecommendations = () => (
-        <div className="grid gap-4">
-            {recommendations.length === 0 ? (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-                    <FiStar className="mx-auto text-gray-300 text-5xl mb-4" />
-                    <h3 className="text-xl font-semibold text-gray-700 mb-2">No Recommendations</h3>
-                    <p className="text-gray-500">Check back later for personalized recommendations</p>
-                </div>
-            ) : (
-                recommendations.map((rec, index) => (
-                    <div key={index} className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition p-6">
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <h3 className="text-lg font-semibold text-gray-800">{rec.title}</h3>
-                                    <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2.5 py-1 rounded-full text-xs font-medium">
-                                        <FiStar /> {rec.matchScore || 85}% Match
-                                    </span>
-                                </div>
-                                <p className="text-sm text-gray-500">{rec.domain} • {rec.stage}</p>
-                                <p className="text-sm text-gray-600 mt-2">{rec.aiSummary?.substring(0, 150)}...</p>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    // Navigate or request access
-                                    setSearchQuery(rec.domain || '');
-                                    setActiveTab('proposals');
-                                }}
-                                className="px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-600 text-sm font-medium rounded-lg transition"
-                            >
-                                View
-                            </button>
                         </div>
                     </div>
                 ))
@@ -462,7 +412,7 @@ const MentorDashboard = () => {
                         <FiUsers className="text-blue-600" />
                         Mentor Dashboard
                     </h1>
-                    <p className="text-gray-600">Find and guide promising startups</p>
+                    <p className="text-gray-600">Guide startups and support founders</p>
                 </div>
                 <button
                     onClick={handleRefresh}
@@ -487,20 +437,27 @@ const MentorDashboard = () => {
             )}
 
             {/* Stats */}
-            {!loading && renderStats()}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                    <p className="text-sm text-gray-500">Assigned Startups</p>
+                    <p className="text-2xl font-bold text-blue-600">{assignedStartups.length}</p>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                    <p className="text-sm text-gray-500">Pending Requests</p>
+                    <p className="text-2xl font-bold text-yellow-600">
+                        {requests.filter(r => r.status === 'PENDING').length}
+                    </p>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                    <p className="text-sm text-gray-500">Access Granted</p>
+                    <p className="text-2xl font-bold text-green-600">
+                        {assignedStartups.filter(s => s.permissionGranted).length}
+                    </p>
+                </div>
+            </div>
 
             {/* Tabs */}
             <div className="flex border-b border-gray-200 mb-6 overflow-x-auto">
-                <button
-                    onClick={() => setActiveTab('proposals')}
-                    className={`px-6 py-3 text-sm font-medium whitespace-nowrap transition ${
-                        activeTab === 'proposals'
-                            ? 'text-blue-600 border-b-2 border-blue-600'
-                            : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                >
-                    <FiSearch className="inline mr-2" /> Browse Proposals
-                </button>
                 <button
                     onClick={() => setActiveTab('assigned')}
                     className={`px-6 py-3 text-sm font-medium whitespace-nowrap transition ${
@@ -509,7 +466,17 @@ const MentorDashboard = () => {
                             : 'text-gray-500 hover:text-gray-700'
                     }`}
                 >
-                    <FiUsers className="inline mr-2" /> Assigned ({assignedProposals.length})
+                    <FiAward className="inline mr-2" /> Assigned ({assignedStartups.length})
+                </button>
+                <button
+                    onClick={() => setActiveTab('search')}
+                    className={`px-6 py-3 text-sm font-medium whitespace-nowrap transition ${
+                        activeTab === 'search'
+                            ? 'text-blue-600 border-b-2 border-blue-600'
+                            : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    <FiSearch className="inline mr-2" /> Search Startups
                 </button>
                 <button
                     onClick={() => setActiveTab('requests')}
@@ -522,14 +489,14 @@ const MentorDashboard = () => {
                     <FiMail className="inline mr-2" /> Requests ({requests.filter(r => r.status === 'PENDING').length})
                 </button>
                 <button
-                    onClick={() => setActiveTab('recommendations')}
+                    onClick={() => setActiveTab('escrow')}
                     className={`px-6 py-3 text-sm font-medium whitespace-nowrap transition ${
-                        activeTab === 'recommendations'
-                            ? 'text-blue-600 border-b-2 border-blue-600'
+                        activeTab === 'escrow'
+                            ? 'text-green-600 border-b-2 border-green-600'
                             : 'text-gray-500 hover:text-gray-700'
                     }`}
                 >
-                    <FiStar className="inline mr-2" /> Recommendations
+                    <FiBriefcase className="inline mr-2" /> Milestones
                 </button>
             </div>
 
@@ -541,10 +508,15 @@ const MentorDashboard = () => {
                 </div>
             ) : (
                 <>
-                    {activeTab === 'proposals' && renderProposals()}
                     {activeTab === 'assigned' && renderAssigned()}
+                    {activeTab === 'search' && renderSearch()}
                     {activeTab === 'requests' && renderRequests()}
-                    {activeTab === 'recommendations' && renderRecommendations()}
+                    {activeTab === 'escrow' && (
+                        <MentorEscrowDashboard 
+                            mentorId={userId} 
+                            startups={assignedStartups}
+                        />
+                    )}
                 </>
             )}
         </div>

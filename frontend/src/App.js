@@ -10,6 +10,8 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import DashboardRouter from './pages/DashboardRouter';
 import UpdateProposal from './components/founder/UpdateProposal';
+import EscrowDashboard from './components/escrow/EscrowDashboard';
+import EscrowDetails from './components/escrow/EscrowDetails';
 
 import './App.css';
 
@@ -52,6 +54,16 @@ function AppContent() {
                                 </ProtectedRoute>
                             }
                         />
+                        <Route path="/escrow" element={
+    <ProtectedRoute>
+        <EscrowDashboard />
+    </ProtectedRoute>
+} />
+<Route path="/escrow/:escrowId" element={
+    <ProtectedRoute>
+        <EscrowDetails />
+    </ProtectedRoute>
+} />
                         
                         {/* ===== 404 REDIRECT ===== */}
                         <Route path="*" element={<Navigate to="/" />} />
